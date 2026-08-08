@@ -57,13 +57,19 @@ make start-controller CLUSTER=a N=1
 make kill-cluster CLUSTER=b         # cluster inteiro fora: lag do MM2 = o RPO
 make start-cluster CLUSTER=b
 
+make kill-mirror N=1                # 1 instancia do MM2 fora: a outra assume as tasks
+make start-mirror N=1
+
+make observability-down             # libera ~1,5Gi parando kafbat e grafana
+make observability-up
+
 make quorum CLUSTER=a               # estado do quorum KRaft
 make describe CLUSTER=a             # ISR de todos os topicos
 make ps
 ```
 
-`kill-*` usa `docker stop`, nao `down`: os volumes ficam, entao da para observar
-o ISR sendo reconstruido e o MM2 drenando o lag acumulado ao restaurar.
+`kill-*` usa `docker compose stop`, nao `down`: os volumes ficam, entao da para
+observar o ISR sendo reconstruido e o MM2 drenando o lag acumulado ao restaurar.
 
 ## Detalhes que costumam surpreender
 

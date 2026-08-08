@@ -1,8 +1,6 @@
 # Cluster B -- dominio "antifraud". Projeto compose proprio, para que
 # "docker compose -f cluster-b.yaml down" derrube o cluster inteiro de uma vez
 # (exercicio 5).
-name: "kafka-cluster-b"
-
 volumes:
   # Um volume POR NO. Cada no grava um meta.properties com o proprio node.id no
   # log dir; compartilhar um volume unico entre nos corrompe o cluster.
@@ -14,11 +12,11 @@ volumes:
   kafka-broker-b-3: { name: "kafka-broker-b-3" }
 
 networks:
-  # Criada pelo Makefile ("make networks"). External porque mirror.yaml e
-  # observability.yaml sao outros projetos compose e precisam entrar nela.
+  # Criada e destruida pelo proprio compose junto com o projeto. "name:" fixa o
+  # nome da rede, sem o prefixo do projeto -- mantem os comandos de docker
+  # network previsiveis.
   cluster-b:
     name: "cluster-b"
-    external: true
 
 x-kafka-commons: &kafka-commons
   image: "kafka-streams-lab/kafka:4.1.1"

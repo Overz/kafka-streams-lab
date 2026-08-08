@@ -354,8 +354,9 @@ lógica Streams dos domínios, não.
 ## Layout de arquivos
 
 ```
+compose.yaml                   ponto de entrada — include dos quatro abaixo
+Makefile
 infra/kafka/
-  Makefile
   Dockerfile
   with-jmx.sh                  injeta o javaagent só no processo do servidor
   jmx/kafka.yml
@@ -370,6 +371,20 @@ infra/kafka/
   observability/  otelcol-config.yaml
   scripts/    create-topics.sh
 ```
+
+`compose.yaml` na raiz faz `include` dos quatro arquivos: `docker compose up -d`
+sobe tudo, e eles continuam separados para ficarem legíveis isolados — abrir
+`cluster-a.yaml` mostra um cluster, não os 16 serviços intercalados.
+
+Como `include` junta tudo num projeto só, três coisas melhoram em relação a
+quatro projetos separados: o MM2 pode declarar `depends_on` nos brokers dos dois
+clusters (antes ele subia antes deles e ficava em crash loop até responderem), as
+redes deixam de precisar de `external: true` e são criadas e destruídas pelo
+próprio compose, e `docker compose ps` mostra o lab inteiro.
+
+O preço: derrubar um cluster inteiro deixa de ser `docker compose -f X down` e
+passa a ser um `stop` com a lista de serviços daquele cluster — o `Makefile`
+esconde isso em `make kill-cluster CLUSTER=b`.
 
 `controller.env` e `broker.env` ficam em `roles/`, não duplicados dentro de cada
 `cluster-*/`: eles não variam entre clusters, e duplicá-los criaria dois arquivos
@@ -461,6 +476,7 @@ O que mudou entre o design aprovado e o que está no disco, e por quê.
 | 7 | kafbat configurado por variáveis de ambiente, sem `kafbat.yaml` | Quatro variáveis registram os dois clusters; um arquivo a menos. |
 | 8 | Limites de memória subiram (controller 768M, broker 1G) | Limite apertado faz o cgroup matar a JVM, e um OOM kill se parece com bug do Kafka para quem está aprendendo. Consumo real continua ~10,5Gi. |
 | 9 | `kill-cluster` usa `docker compose stop`, não `down` | `stop` preserva os volumes, então `start-cluster` traz o cluster de volta com os dados e dá para observar o MM2 drenando o lag acumulado. Com `down`, o exercício 5 perderia o estado. |
+| 10 | `compose.yaml` na raiz com `include`, um projeto compose só; `Makefile` também na raiz | Pedido do usuário. Ganhou-se `depends_on` do MM2 nos brokers dos dois clusters e redes gerenciadas pelo próprio compose; perdeu-se `docker compose -f X down` por cluster, substituído por `stop` com lista de serviços. |
 
 ### Limite conhecido do isolamento de rede
 

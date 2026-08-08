@@ -1,18 +1,14 @@
-# Observabilidade -- projeto separado para poder ficar fora quando nao se esta
-# medindo. E o que mais consome RAM depois dos brokers.
+# Observabilidade -- arquivo separado para poder ficar de fora quando nao se esta
+# medindo ("make observability-down"). E o que mais consome RAM depois dos brokers.
 #
 # Os dois servicos entram nas duas redes. Isso enfraquece um pouco o isolamento
 # (sao travessias), mas nenhum deles carrega dado de aplicacao: um le metadados,
 # o outro raspa metricas.
-name: "kafka-observability"
-
 networks:
   cluster-a:
     name: "cluster-a"
-    external: true
   cluster-b:
     name: "cluster-b"
-    external: true
 
 services:
   # Estado AGORA: ISR por particao, particoes under-replicated, controller ativo,
