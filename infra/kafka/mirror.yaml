@@ -1,0 +1,59 @@
+# MirrorMaker 2 -- a unica ponte de DADOS entre os dois clusters.
+#
+# Duas instancias com o mesmo mm2.properties: elas formam um cluster Connect e
+# dividem as tasks. Matar uma e o exercicio 6.
+#
+# Projeto compose separado de proposito: depends_on nao atravessa projetos, entao
+# o MM2 nao tem como esperar os brokers. "restart: always" cobre isso -- ele
+# reinicia ate os clusters responderem. O "make up" ja sobe na ordem certa.
+name: "kafka-mirror"
+
+networks:
+  cluster-a:
+    name: "cluster-a"
+    external: true
+  cluster-b:
+    name: "cluster-b"
+    external: true
+
+x-mirror-commons: &mirror-commons
+  image: "kafka-streams-lab/kafka:4.1.1"
+  restart: "always"
+  networks:
+    - "cluster-a"
+    - "cluster-b"
+  volumes:
+    - "./mirror/mm2.properties:/opt/kafka/config/mm2.properties:ro"
+  # O ENTRYPOINT da imagem (/__cacert_entrypoint.sh) faz exec no CMD, entao trocar
+  # so o command basta para rodar MM2 em vez do broker. O wrapper with-jmx.sh
+  # continua no caminho para o agent entrar so neste processo.
+  command:
+    - "/opt/jmx/with-jmx.sh"
+    - "/opt/kafka/bin/connect-mirror-maker.sh"
+    - "/opt/kafka/config/mm2.properties"
+  environment:
+    KAFKA_HEAP_OPTS: "-Xms512m -Xmx512m"
+  deploy:
+    resources:
+      reservations: { cpus: "0.25", memory: "512M" }
+      limits: { cpus: "1.0", memory: "1G" }
+  healthcheck:
+    test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8083"]
+    interval: "15s"
+    timeout: "5s"
+    retries: 20
+    start_period: "40s"
+
+services:
+  # hostname explicito e igual ao service name: o REST interno do KIP-710 anuncia
+  # o hostname do container, e o alias de DNS na rede e o service name. Se os dois
+  # divergissem, um worker nao acharia o outro.
+  kafka-mirror-1:
+    <<: *mirror-commons
+    container_name: "kafka-mirror-1"
+    hostname: "kafka-mirror-1"
+
+  kafka-mirror-2:
+    <<: *mirror-commons
+    container_name: "kafka-mirror-2"
+    hostname: "kafka-mirror-2"

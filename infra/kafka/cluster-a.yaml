@@ -1,0 +1,137 @@
+# Cluster A -- dominio "orders". Projeto compose proprio, para que
+# "docker compose -f cluster-a.yaml down" derrube o cluster inteiro de uma vez
+# (exercicio 5).
+name: "kafka-cluster-a"
+
+volumes:
+  # Um volume POR NO. Cada no grava um meta.properties com o proprio node.id no
+  # log dir; compartilhar um volume unico entre nos corrompe o cluster.
+  kafka-controller-a-1: { name: "kafka-controller-a-1" }
+  kafka-controller-a-2: { name: "kafka-controller-a-2" }
+  kafka-controller-a-3: { name: "kafka-controller-a-3" }
+  kafka-broker-a-1: { name: "kafka-broker-a-1" }
+  kafka-broker-a-2: { name: "kafka-broker-a-2" }
+  kafka-broker-a-3: { name: "kafka-broker-a-3" }
+
+networks:
+  # Criada pelo Makefile ("make networks"). External porque mirror.yaml e
+  # observability.yaml sao outros projetos compose e precisam entrar nela.
+  cluster-a:
+    name: "cluster-a"
+    external: true
+
+x-kafka-commons: &kafka-commons
+  image: "kafka-streams-lab/kafka:4.1.1"
+  restart: "always"
+  networks:
+    - "cluster-a"
+
+x-controller-commons: &controller-commons
+  <<: *kafka-commons
+  env_file:
+    - "./cluster-a/common.env"
+    - "./roles/controller.env"
+  deploy:
+    resources:
+      reservations: { cpus: "0.15", memory: "256M" }
+      limits: { cpus: "0.5", memory: "768M" }
+  # TCP puro em vez de kafka-broker-api-versions.sh: o healthcheck roda a cada
+  # 10s em 12 containers, e subir uma JVM a cada vez custaria mais RAM que os
+  # brokers. A porta so abre no fim do boot, entao o sinal e util.
+  healthcheck:
+    test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9093"]
+    interval: "10s"
+    timeout: "5s"
+    retries: 12
+    start_period: "20s"
+
+x-broker-commons: &broker-commons
+  <<: *kafka-commons
+  env_file:
+    - "./cluster-a/common.env"
+    - "./roles/broker.env"
+  deploy:
+    resources:
+      reservations: { cpus: "0.25", memory: "512M" }
+      limits: { cpus: "1.0", memory: "1G" }
+  healthcheck:
+    test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9092"]
+    interval: "10s"
+    timeout: "5s"
+    retries: 18
+    start_period: "25s"
+
+services:
+  kafka-controller-a-1:
+    <<: *controller-commons
+    container_name: "kafka-controller-a-1"
+    environment:
+      KAFKA_NODE_ID: "1"
+    volumes:
+      - "kafka-controller-a-1:/var/lib/kafka/data"
+
+  kafka-controller-a-2:
+    <<: *controller-commons
+    container_name: "kafka-controller-a-2"
+    environment:
+      KAFKA_NODE_ID: "2"
+    volumes:
+      - "kafka-controller-a-2:/var/lib/kafka/data"
+
+  kafka-controller-a-3:
+    <<: *controller-commons
+    container_name: "kafka-controller-a-3"
+    environment:
+      KAFKA_NODE_ID: "3"
+    volumes:
+      - "kafka-controller-a-3:/var/lib/kafka/data"
+
+  # IDs 11-13 para os brokers: separar a faixa dos controllers (1-3) torna obvio
+  # qual papel um node.id tem ao ler log ou saida de kafka-metadata-quorum.
+  kafka-broker-a-1:
+    <<: *broker-commons
+    container_name: "kafka-broker-a-1"
+    environment:
+      KAFKA_NODE_ID: "11"
+      KAFKA_LISTENERS: "INTERNAL://:9092,EXTERNAL://:19092"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka-broker-a-1:9092,EXTERNAL://localhost:19092"
+    ports:
+      - "19092:19092"
+    volumes:
+      - "kafka-broker-a-1:/var/lib/kafka/data"
+    depends_on:
+      - "kafka-controller-a-1"
+      - "kafka-controller-a-2"
+      - "kafka-controller-a-3"
+
+  kafka-broker-a-2:
+    <<: *broker-commons
+    container_name: "kafka-broker-a-2"
+    environment:
+      KAFKA_NODE_ID: "12"
+      KAFKA_LISTENERS: "INTERNAL://:9092,EXTERNAL://:19093"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka-broker-a-2:9092,EXTERNAL://localhost:19093"
+    ports:
+      - "19093:19093"
+    volumes:
+      - "kafka-broker-a-2:/var/lib/kafka/data"
+    depends_on:
+      - "kafka-controller-a-1"
+      - "kafka-controller-a-2"
+      - "kafka-controller-a-3"
+
+  kafka-broker-a-3:
+    <<: *broker-commons
+    container_name: "kafka-broker-a-3"
+    environment:
+      KAFKA_NODE_ID: "13"
+      KAFKA_LISTENERS: "INTERNAL://:9092,EXTERNAL://:19094"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka-broker-a-3:9092,EXTERNAL://localhost:19094"
+    ports:
+      - "19094:19094"
+    volumes:
+      - "kafka-broker-a-3:/var/lib/kafka/data"
+    depends_on:
+      - "kafka-controller-a-1"
+      - "kafka-controller-a-2"
+      - "kafka-controller-a-3"

@@ -1,0 +1,64 @@
+# Observabilidade -- projeto separado para poder ficar fora quando nao se esta
+# medindo. E o que mais consome RAM depois dos brokers.
+#
+# Os dois servicos entram nas duas redes. Isso enfraquece um pouco o isolamento
+# (sao travessias), mas nenhum deles carrega dado de aplicacao: um le metadados,
+# o outro raspa metricas.
+name: "kafka-observability"
+
+networks:
+  cluster-a:
+    name: "cluster-a"
+    external: true
+  cluster-b:
+    name: "cluster-b"
+    external: true
+
+services:
+  # Estado AGORA: ISR por particao, particoes under-replicated, controller ativo,
+  # os topicos com prefixo aparecendo do outro lado, lag do consumer group do MM2.
+  # https://ui.docs.kafbat.io/configuration/misc-configuration-properties
+  kafbat:
+    image: "kafbat/kafka-ui:v1.4.2"
+    container_name: "kafbat"
+    restart: "always"
+    environment:
+      DYNAMIC_CONFIG_ENABLED: "true"
+      KAFKA_CLUSTERS_0_NAME: "cluster-a"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka-broker-a-1:9092,kafka-broker-a-2:9092,kafka-broker-a-3:9092"
+      KAFKA_CLUSTERS_1_NAME: "cluster-b"
+      KAFKA_CLUSTERS_1_BOOTSTRAPSERVERS: "kafka-broker-b-1:9092,kafka-broker-b-2:9092,kafka-broker-b-3:9092"
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        reservations: { cpus: "0.1", memory: "256M" }
+        limits: { cpus: "0.5", memory: "512M" }
+    networks:
+      - "cluster-a"
+      - "cluster-b"
+
+  # Historico TEMPORAL: Grafana + Mimir + Loki + Tempo + OTel Collector numa imagem.
+  # O collector raspa os 14 alvos JMX (ver observability/otelcol-config.yaml).
+  # Grafana: http://localhost:3000
+  grafana-lgtm:
+    image: "grafana/otel-lgtm:0.28.0"
+    container_name: "grafana-lgtm"
+    restart: "always"
+    ports:
+      - "3000:3000"
+      - "4317:4317"
+      - "4318:4318"
+    # Permite ao collector alcancar as apps Streams rodando no host, quando elas
+    # tiverem endpoint de metricas.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - "./observability/otelcol-config.yaml:/otel-lgtm/otelcol-config.yaml:ro"
+    deploy:
+      resources:
+        reservations: { cpus: "0.5", memory: "1G" }
+        limits: { cpus: "2.0", memory: "2G" }
+    networks:
+      - "cluster-a"
+      - "cluster-b"
