@@ -2,7 +2,7 @@
 #   desenho:  docs/superpowers/specs/2026-08-07-kafka-multi-cluster-ha-design.md
 #   uso:      infra/kafka/README.md
 #
-# O compose.yaml da raiz inclui os quatro arquivos de infra/kafka/, entao os
+# O docker-compose.yaml da raiz inclui os quatro arquivos de infra/kafka/, entao os
 # comandos "docker compose" abaixo nao precisam de -f.
 
 COMPOSE ?= docker compose

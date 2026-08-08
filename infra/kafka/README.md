@@ -17,12 +17,23 @@ entre si via MirrorMaker 2. Desenho completo e justificativas em
 
 ## Subir
 
+Todos os comandos rodam **da raiz do repositorio**.
+
 ```bash
 make up
 ```
 
-Cria as redes, constroi a imagem, sobe os dois clusters, cria os topicos, sobe o
-MirrorMaker 2 e a observabilidade. `make help` lista todos os alvos.
+Constroi a imagem, sobe os 16 containers e cria os topicos. `make help` lista
+todos os alvos.
+
+O `docker-compose.yaml` da raiz e o ponto de entrada: ele faz `include` dos
+quatro arquivos deste diretorio, entao `docker compose up -d` tambem funciona
+direto, sem o Makefile. Os quatro continuam separados para ficarem legiveis
+isolados -- abrir `cluster-a.yaml` mostra um cluster, nao os 16 servicos
+intercalados.
+
+As redes `cluster-a` e `cluster-b` sao criadas e destruidas pelo proprio compose;
+nao ha passo de preparacao.
 
 | | |
 |---|---|
@@ -30,6 +41,25 @@ MirrorMaker 2 e a observabilidade. `make help` lista todos os alvos.
 | Grafana | http://localhost:3000 |
 | cluster-a | `localhost:19092,localhost:19093,localhost:19094` |
 | cluster-b | `localhost:29092,localhost:29093,localhost:29094` |
+
+## Portas
+
+Dentro das redes docker todos os brokers usam `9092` (`kafka-broker-a-1:9092`) --
+e o listener `INTERNAL`, usado pelo MM2 e pelo kafbat. As portas `x909x` acima
+sao o listener `EXTERNAL`, publicado no host porque seis processos nao cabem na
+mesma porta:
+
+```
+19092  broker-a-1        29092  broker-b-1
+19093  broker-a-2        29093  broker-b-2
+19094  broker-a-3        29094  broker-b-3
+```
+
+Primeiro digito = cluster, ultimo = numero do broker. Nao existe `19091`.
+
+**Configure os tres endereços, nao so um.** `bootstrap.servers` e a lista de
+contato inicial: com so `localhost:19092`, parar o `broker-a-1` (exercicio 1)
+impede o cliente ate de descobrir o cluster, mesmo com os outros dois no ar.
 
 ## Topicos
 
