@@ -1,0 +1,53 @@
+# OTel Collector -- o unico produtor de dado do OpenObserve.
+#
+#   raspa   os 14 alvos JMX na 7071 (metrica)
+#   le      o stdout dos 14 containers do Kafka via /var/lib/docker/containers (log)
+#   recebe  OTLP das apps do host em 4317 (gRPC) e 4318 (HTTP)
+#
+# Distribuicao contrib, nao core: os receivers "prometheus" e "filelog" so
+# existem nela. O que cada um faz esta comentado em config.yaml.
+#
+# Era o collector embutido na imagem do grafana/otel-lgtm; virou servico proprio
+# quando o lgtm saiu, e com isso a config passou a ser versionada.
+networks:
+  cluster-a:
+    name: "cluster-a"
+  cluster-b:
+    name: "cluster-b"
+
+services:
+  otelcol:
+    image: "otel/opentelemetry-collector-contrib:0.158.0"
+    container_name: "otelcol"
+    restart: "always"
+    command: [ "--config=/etc/otelcol/config.yaml" ]
+    environment:
+      # base64 de "admin@admin.com:Admin@123" -- header Authorization exigido pelo
+      # OpenObserve em toda ingestao. Referenciado como ${env:O2_AUTH} na config;
+      # trocar ZO_ROOT_USER_* em ../openobserve/compose.yaml exige regerar isto:
+      #   printf 'usuario:SENHA' | base64 -w0
+      # A ingestao usa sempre o usuario root, nunca o SSO: token de browser nao
+      # serve para um processo.
+      O2_AUTH: "Basic YWRtaW5AYWRtaW4uY29tOkFkbWluQDEyMw=="
+    ports:
+      - "4317:4317"   # OTLP gRPC, para as apps Streams rodando no host
+      - "4318:4318"   # OTLP HTTP
+    # root porque /var/lib/docker/containers e 0710 root:root -- o usuario padrao
+    # da imagem (10001) nao le os arquivos de log. Montagem read-only.
+    user: "0:0"
+    volumes:
+      - "./config.yaml:/etc/otelcol/config.yaml:ro"
+      - "/var/lib/docker/containers:/var/lib/docker/containers:ro"
+    # Permite ao collector alcancar as apps Streams rodando no host, quando elas
+    # tiverem endpoint de metricas.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - "openobserve"
+    deploy:
+      resources:
+        reservations: { cpus: "0.1", memory: "128M" }
+        limits: { cpus: "0.5", memory: "512M" }
+    networks:
+      - "cluster-a"
+      - "cluster-b"

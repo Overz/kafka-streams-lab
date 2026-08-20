@@ -8,11 +8,25 @@
 # NAO cria os topicos replicados (cluster-a.orders.fraud-requested e
 # cluster-b.antifraud.analysis-completed) -- quem cria e o MirrorMaker 2, com o
 # mesmo numero de particoes da origem.
+#
+# Roda DENTRO de um container da imagem do lab (servico kafka-init-topics), nao
+# no host: assim "docker compose up -d" sozinho ja deixa os topicos prontos, sem
+# depender do Makefile. Por isso fala com os brokers por bootstrap-server na rede
+# docker, e nao por "docker exec".
+#
+#   docker compose up -d kafka-init-topics     # recria, idempotente
 set -euo pipefail
 
 PARTITIONS="${PARTITIONS:-3}"
 REPLICATION="${REPLICATION:-3}"
 MIN_ISR="${MIN_ISR:-2}"
+
+# Os tres enderecos de cada cluster, nao um: com so um, o broker daquele endereco
+# fora do ar (exercicio 1) impede ate a descoberta do cluster.
+BOOTSTRAP_A="${BOOTSTRAP_A:-kafka-broker-a-1:9092,kafka-broker-a-2:9092,kafka-broker-a-3:9092}"
+BOOTSTRAP_B="${BOOTSTRAP_B:-kafka-broker-b-1:9092,kafka-broker-b-2:9092,kafka-broker-b-3:9092}"
+
+KAFKA_BIN="${KAFKA_BIN:-/opt/kafka/bin}"
 
 # Topicos por cluster. Cada dominio e dono dos seus.
 TOPICS_A=(
@@ -25,44 +39,44 @@ TOPICS_B=(
   "antifraud.analysis-completed"
 )
 
-wait_for_broker() {
-  local container="$1"
+wait_for_cluster() {
+  local bootstrap="$1"
   local attempt=0
 
-  until docker exec "${container}" /opt/kafka/bin/kafka-broker-api-versions.sh \
-      --bootstrap-server localhost:9092 >/dev/null 2>&1; do
+  until "${KAFKA_BIN}/kafka-broker-api-versions.sh" \
+      --bootstrap-server "${bootstrap}" >/dev/null 2>&1; do
     attempt=$((attempt + 1))
     if [ "${attempt}" -ge 30 ]; then
-      echo "erro: ${container} nao respondeu depois de 30 tentativas" >&2
+      echo "erro: ${bootstrap} nao respondeu depois de 30 tentativas" >&2
       return 1
     fi
-    echo "  aguardando ${container}... (${attempt}/30)"
+    echo "  aguardando ${bootstrap}... (${attempt}/30)"
     sleep 5
   done
 }
 
 create_topics() {
-  local container="$1"
+  local bootstrap="$1"
   shift
 
   for topic in "$@"; do
     # --if-not-exists deixa o script idempotente: rodar de novo nao falha nem
     # altera topico existente.
-    docker exec "${container}" /opt/kafka/bin/kafka-topics.sh \
-      --bootstrap-server localhost:9092 \
+    "${KAFKA_BIN}/kafka-topics.sh" \
+      --bootstrap-server "${bootstrap}" \
       --create --if-not-exists \
       --topic "${topic}" \
       --partitions "${PARTITIONS}" \
       --replication-factor "${REPLICATION}" \
-      --config "min.insync.replicas=${MIN_ISR}"
+      --config "min.insync.replicas=${MIN_ISR}" >/dev/null
     echo "  ${topic}  particoes=${PARTITIONS} rf=${REPLICATION} min.isr=${MIN_ISR}"
   done
 }
 
 echo "cluster-a:"
-wait_for_broker "kafka-broker-a-1"
-create_topics "kafka-broker-a-1" "${TOPICS_A[@]}"
+wait_for_cluster "${BOOTSTRAP_A}"
+create_topics "${BOOTSTRAP_A}" "${TOPICS_A[@]}"
 
 echo "cluster-b:"
-wait_for_broker "kafka-broker-b-1"
-create_topics "kafka-broker-b-1" "${TOPICS_B[@]}"
+wait_for_cluster "${BOOTSTRAP_B}"
+create_topics "${BOOTSTRAP_B}" "${TOPICS_B[@]}"

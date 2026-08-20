@@ -1,0 +1,184 @@
+# Config estatica do kafbat UI -- montada em /kafbat/static-config.yaml e apontada
+# por SPRING_CONFIG_ADDITIONAL-LOCATION (ver compose.yaml ao lado).
+#
+# Por que arquivo em vez de environment: a doc do kafbat recomenda YAML e reserva
+# env var para override pontual. Blocos como auth.oauth2, audit e masking sao
+# aninhados demais para virar KAFKA_CLUSTERS_0_... sem ficar ilegivel.
+#
+# Este arquivo e READ-ONLY para o container. O que a UI escreve (wizard, uploads
+# de truststore) vai para /etc/kafkaui/dynamic_config.yaml, no volume kafbat-etc
+# -- DYNAMIC_CONFIG_ENABLED=true. Os dois convivem: o dinamico soma ao estatico.
+#
+# Referencia: https://ui.docs.kafbat.io/configuration/configuration-file
+
+kafka:
+  clusters:
+    # ------------------------------------------------------------------ orders
+    - name: "cluster-a"
+      bootstrap-servers: "kafka-broker-a-1:9092,kafka-broker-a-2:9092,kafka-broker-a-3:9092"
+
+      # Os brokers ja expoem /metrics na 7071 via jmx_prometheus_javaagent (ver
+      # infra/kafka/Dockerfile). PROMETHEUS le esse endpoint direto -- nao precisa
+      # abrir porta JMX/RMI so para o kafbat.
+      metrics:
+        type: "PROMETHEUS"
+        port: 7071
+
+      # A aba "KSQL DB" fica desligada de proposito. ksqlDB so existe em imagem
+      # confluentinc, sob Confluent Community License; o SQL continuo deste lab e
+      # o Flink (infra/flink/, Apache-2.0). A aba do kafbat fala a REST
+      # API do ksqlDB e so ela -- nao tem como apontar para o Flink.
+      # ksqldb-server: "http://ksqldb:8088"
+
+      # Trilha de auditoria: toda acao mutante do UI vira registro. topic-audit
+      # grava no proprio cluster (topico abaixo), console-audit sai no log do
+      # container -- util em lab, onde ler o log e mais rapido que abrir o topico.
+      audit:
+        topic-audit-enabled: true
+        console-audit-enabled: true
+        topic: "__kui-audit-log"
+        audit-topics-partitions: 3
+        level: "ALL"  # ALL | ALTER_ONLY
+        audit-topic-properties:
+          "retention.ms": 43200000  # 12h
+
+      # 0 = sem throttle. Lab local, o custo de polling nao importa.
+      polling-throttle-rate: 0
+
+      # Descomente para travar o cluster em leitura -- some producer, delete de
+      # topico, reset de offset. Em lab isso atrapalha os exercicios de falha, que
+      # dependem de escrever e recriar topicos.
+      # read-only: true
+
+      # O lab nao tem Schema Registry nem Kafka Connect. Os blocos ficam aqui para
+      # quando tiver: kafbat descobre os subjects e os connectors sozinho.
+      # schemaRegistry: "http://schema-registry:8085"
+      # kafka-connect:
+      #   - name: "first"
+      #     address: "http://kafka-connect:8083"
+
+      # Mascaramento de campo sensivel na visualizacao de mensagem. Sem PII no
+      # lab, entao fica de exemplo.
+      # masking:
+      #   - type: "MASK"
+      #     fields: [ "document", "cardNumber" ]
+      #     topic-values-pattern: "orders\\..*"
+
+    # --------------------------------------------------------------- antifraud
+    - name: "cluster-b"
+      bootstrap-servers: "kafka-broker-b-1:9092,kafka-broker-b-2:9092,kafka-broker-b-3:9092"
+      metrics:
+        type: "PROMETHEUS"
+        port: 7071
+      audit:
+        topic-audit-enabled: true
+        console-audit-enabled: true
+        topic: "__kui-audit-log"
+        audit-topics-partitions: 3
+        level: "ALL"
+        audit-topic-properties:
+          "retention.ms": 43200000
+      polling-throttle-rate: 0
+      # read-only: true
+
+  admin-client-timeout: 30000
+
+  polling:
+    poll-timeout-ms: 1000
+    max-page-size: 500
+    default-page-size: 100
+
+# ============================================================================
+# MCP -- endpoint SSE em http://localhost:8080/mcp/sse
+# ============================================================================
+# Expoe topicos, consumer groups e mensagens como ferramentas para um cliente
+# MCP. Atencao: com auth.type=OAUTH2 abaixo, /mcp/sse tambem exige credencial --
+# um cliente MCP sem fluxo OAuth leva 401. Para usar via mcp-remote:
+#
+#   npx mcp-remote http://localhost:8080/mcp/sse --transport sse-only --allow-http
+#
+# https://ui.docs.kafbat.io/faq/mcp
+mcp:
+  enabled: true
+
+# ============================================================================
+# OAuth2 -- login pelo Dex (IdP local, ver infra/dex/)
+# ============================================================================
+# usuario: admin@admin / senha: admin
+#
+# O detalhe que quebra em docker: o browser e o container enxergam o Dex por
+# nomes diferentes. Por isso NAO usamos issuer-uri (que dispararia discovery e
+# fixaria um unico host); cada endpoint aponta para quem vai chama-lo:
+#
+#   authorization-uri -> localhost:5556  (redirect do BROWSER, no host)
+#   token/jwks/userinfo -> dex:5556      (chamadas do CONTAINER kafbat)
+auth:
+  type: "OAUTH2"
+  oauth2:
+    client:
+      dex:
+        provider: "dex"
+        client-name: "Dex (lab)"
+        client-id: "kafbat-ui"
+        client-secret: "kafbat-ui-secret"
+        scope:
+          - "openid"
+          - "email"
+          - "profile"
+          - "groups"
+        authorization-grant-type: "authorization_code"
+        redirect-uri: "http://localhost:8080/login/oauth2/code/dex"
+        authorization-uri: "http://localhost:5556/dex/auth"
+        token-uri: "http://dex:5556/dex/token"
+        user-info-uri: "http://dex:5556/dex/userinfo"
+        jwk-set-uri: "http://dex:5556/dex/keys"
+        user-name-attribute: "email"
+        custom-params:
+          type: "oauth"       # provider generico (nao google/github/cognito)
+          roles-field: "groups"
+
+    # Aceitar Bearer token em vez de sessao de browser -- e o que destrava o MCP
+    # e chamadas de API sem login interativo. Descomente e peca um token ao Dex.
+    # resource-server:
+    #   jwt:
+    #     jwk-set-uri: "http://dex:5556/dex/keys"
+    #     jws-algorithms: [ "RS256" ]
+    #     principal-claim-name: "email"
+
+# RBAC e opcional: sem este bloco, qualquer usuario autenticado tem acesso total
+# -- que e o que se quer num lab de um usuario so. Ligar o bloco sem um subject
+# que case com o usuario do Dex resulta em UI vazia (autenticado, zero permissao).
+# rbac:
+#   roles:
+#     - name: "lab-admin"
+#       clusters: [ "cluster-a", "cluster-b" ]
+#       subjects:
+#         - provider: "oauth"
+#           type: "user"
+#           value: "admin@admin"
+#       permissions:
+#         - resource: "applicationconfig"
+#           value: ".*"
+#           actions: "all"
+
+webclient:
+  response-timeout-ms: 20000
+  max-in-memory-buffer-size: "20MB"
+
+# /actuator/prometheus do proprio kafbat -- o collector nao raspa por padrao,
+# mas o endpoint fica de pe para quando quiser adicionar o alvo.
+management:
+  endpoint:
+    info:
+      enabled: true
+    health:
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: "info,health,prometheus"
+
+logging:
+  level:
+    root: "INFO"
+    io.kafbat.ui: "INFO"

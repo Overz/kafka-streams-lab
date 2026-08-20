@@ -1,0 +1,77 @@
+# SQL continuo sobre os topicos -- o papel que o ksqlDB ocuparia, sem imagem
+# Confluent: Flink e Apache-2.0.
+#
+#   make flink-sql          abre o SQL client interativo
+#   make flink-example      roda sql/orders.sql (tabela + SELECT)
+#   http://localhost:8081   UI do Flink: jobs, checkpoints, backpressure
+#
+# Session cluster classico: 1 jobmanager (coordena, guarda o catalogo da sessao)
+# + 1 taskmanager (executa). O SQL client roda DENTRO do jobmanager e submete
+# via REST na 8081 -- por isso nao ha container de SQL gateway aqui.
+#
+# Nas duas redes: diferente do MM2, o Flink nao replica nada: ele le, calcula e
+# escreve onde o SQL mandar. Ler os dois dominios no mesmo job e justamente o
+# exercicio interessante (join de orders com antifraud sem passar pelo MM2).
+networks:
+  cluster-a:
+    name: "cluster-a"
+  cluster-b:
+    name: "cluster-b"
+
+x-flink-commons: &flink-commons
+  build:
+    context: "."
+  image: "kafka-streams-lab/flink:2.3.0"
+  restart: "always"
+  networks:
+    - "cluster-a"
+    - "cluster-b"
+  volumes:
+    # Scripts SQL versionados no repo, disponiveis dentro do container.
+    - "./sql:/opt/flink/sql:ro"
+
+services:
+  flink-jobmanager:
+    <<: *flink-commons
+    container_name: "flink-jobmanager"
+    command: "jobmanager"
+    environment:
+      # O entrypoint da imagem transforma FLINK_PROPERTIES em config.yaml.
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.memory.process.size: 1024m
+        rest.address: 0.0.0.0
+        rest.bind-address: 0.0.0.0
+        execution.checkpointing.interval: 30s
+        state.backend.type: hashmap
+    ports:
+      - "8081:8081"
+    deploy:
+      resources:
+        reservations: { cpus: "0.15", memory: "512M" }
+        limits: { cpus: "1.0", memory: "1200M" }
+    healthcheck:
+      test: [ "CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8081" ]
+      interval: "10s"
+      timeout: "5s"
+      retries: 12
+      start_period: "20s"
+
+  flink-taskmanager:
+    <<: *flink-commons
+    container_name: "flink-taskmanager"
+    command: "taskmanager"
+    environment:
+      # 2 slots = 2 queries SQL simultaneas com paralelismo 1. Subir isso sem
+      # subir a memoria so faz as queries brigarem pelo mesmo heap.
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 2
+        taskmanager.memory.process.size: 1536m
+    depends_on:
+      flink-jobmanager:
+        condition: "service_healthy"
+    deploy:
+      resources:
+        reservations: { cpus: "0.25", memory: "768M" }
+        limits: { cpus: "1.5", memory: "1800M" }

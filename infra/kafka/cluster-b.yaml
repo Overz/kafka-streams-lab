@@ -19,6 +19,20 @@ networks:
     name: "cluster-b"
 
 x-kafka-commons: &kafka-commons
+  # O driver json-file grava o valor destes labels em cada linha do log ("attrs"),
+  # e e assim que o otelcol descobre de qual servico veio a linha -- sem precisar
+  # do docker.sock. max-size/max-file evitam que o lab encha o disco.
+  logging:
+    driver: "json-file"
+    options:
+      labels: "com.docker.compose.service"
+      max-size: "10m"
+      max-file: "3"
+  # build junto com a tag: "docker compose up -d" constroi a imagem sozinho, sem
+  # depender de "make build". Compose constroi antes de criar qualquer container,
+  # e as repeticoes entre os servicos batem no cache.
+  build:
+    context: "."
   image: "kafka-streams-lab/kafka:4.1.1"
   restart: "always"
   networks:
@@ -37,7 +51,7 @@ x-controller-commons: &controller-commons
   # 10s em 12 containers, e subir uma JVM a cada vez custaria mais RAM que os
   # brokers. A porta so abre no fim do boot, entao o sinal e util.
   healthcheck:
-    test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9093"]
+    test: [ "CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9093" ]
     interval: "10s"
     timeout: "5s"
     retries: 12
@@ -53,7 +67,7 @@ x-broker-commons: &broker-commons
       reservations: { cpus: "0.25", memory: "512M" }
       limits: { cpus: "1.0", memory: "1G" }
   healthcheck:
-    test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9092"]
+    test: [ "CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9092" ]
     interval: "10s"
     timeout: "5s"
     retries: 18

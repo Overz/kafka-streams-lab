@@ -1,8 +1,8 @@
 # Lab Kafka multi-cluster.
 #   desenho:  docs/superpowers/specs/2026-08-07-kafka-multi-cluster-ha-design.md
-#   uso:      infra/kafka/README.md
+#   uso:      infra/README.md
 #
-# O docker-compose.yaml da raiz inclui os quatro arquivos de infra/kafka/, entao os
+# O docker-compose.yaml da raiz inclui um arquivo por dominio em infra/, entao os
 # comandos "docker compose" abaixo nao precisam de -f.
 
 COMPOSE ?= docker compose
@@ -20,21 +20,22 @@ CLUSTER_SERVICES = kafka-controller-$(CLUSTER)-1 kafka-controller-$(CLUSTER)-2 k
 .PHONY: help build up down clean topics ps logs \
         kill-broker start-broker kill-controller start-controller \
         kill-cluster start-cluster kill-mirror start-mirror \
-        observability-up observability-down quorum describe
+        observability-up observability-down openobserve-restart quorum describe \
+        flink-sql flink-example flink-up flink-down
 
 help: ## Lista os alvos
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-build: ## Constroi a imagem do Kafka com o jmx_prometheus_javaagent
-	docker build -t $(IMAGE) infra/kafka
+build: ## Constroi as imagens do lab (Kafka com javaagent, Flink com conector Kafka)
+	$(COMPOSE) build
 
-up: build ## Sobe tudo e cria os topicos
+up: ## Sobe tudo (constroi as imagens e cria os topicos no caminho)
 	$(COMPOSE) up -d --wait
-	@echo "==> topicos"
-	./infra/kafka/scripts/create-topics.sh
 	@echo ""
-	@echo "  kafbat     http://localhost:8080"
-	@echo "  grafana    http://localhost:3000"
+	@echo "  kafbat      http://localhost:8080   (login: admin@admin / admin)"
+	@echo "  openobserve http://localhost:5080   (SSO pelo Dex, ou admin@admin.com / Admin@123)"
+	@echo "  flink       http://localhost:8081"
+	@echo "  dex         http://localhost:5556/dex"
 	@echo "  cluster-a  localhost:19092,localhost:19093,localhost:19094"
 	@echo "  cluster-b  localhost:29092,localhost:29093,localhost:29094"
 
@@ -45,7 +46,7 @@ clean: ## Derruba tudo E apaga volumes e redes
 	$(COMPOSE) down -v
 
 topics: ## (Re)cria os topicos -- idempotente
-	./infra/kafka/scripts/create-topics.sh
+	$(COMPOSE) up kafka-init-topics
 
 ps: ## Estado dos containers do lab
 	@$(COMPOSE) ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
@@ -81,11 +82,36 @@ kill-mirror: ## Derruba 1 instancia do MM2: make kill-mirror N=1
 start-mirror: ## Restaura a instancia do MM2: make start-mirror N=1
 	$(COMPOSE) start kafka-mirror-$(N)
 
-observability-up: ## Sobe kafbat e grafana-lgtm
-	$(COMPOSE) start kafbat grafana-lgtm
+OBSERVABILITY_SERVICES = kafbat dex openobserve otelcol
 
-observability-down: ## Para kafbat e grafana-lgtm para liberar RAM
-	$(COMPOSE) stop kafbat grafana-lgtm
+observability-up: ## Sobe kafbat, dex, openobserve e otelcol
+	$(COMPOSE) start $(OBSERVABILITY_SERVICES)
+
+observability-down: ## Para os servicos de observabilidade para liberar RAM
+	$(COMPOSE) stop $(OBSERVABILITY_SERVICES)
+
+# O dex roda no namespace de rede do openobserve: reiniciar so um deixa a 5556
+# escutando num sandbox orfao, e o login para de responder no host. O kafbat vai
+# junto porque o pool de conexoes dele guarda sockets para o Dex que morreram no
+# restart -- sem isso, o primeiro login depois daqui falha com 500.
+openobserve-restart: ## Reinicia OpenObserve, Dex e kafbat, nessa ordem
+	$(COMPOSE) restart openobserve
+	$(COMPOSE) restart dex
+	$(COMPOSE) restart kafbat
+
+# --- SQL sobre os topicos (Flink) ------------------------------------------
+
+flink-sql: ## Abre o SQL client interativo do Flink
+	docker exec -it flink-jobmanager /opt/flink/bin/sql-client.sh
+
+flink-example: ## Roda infra/flink/sql/orders.sql -- agrega orders.created por cliente
+	docker exec flink-jobmanager /opt/flink/bin/sql-client.sh -f /opt/flink/sql/orders.sql
+
+flink-down: ## Para o Flink para liberar RAM
+	$(COMPOSE) stop flink-jobmanager flink-taskmanager
+
+flink-up: ## Sobe o Flink de volta
+	$(COMPOSE) start flink-jobmanager flink-taskmanager
 
 # --- Inspecao --------------------------------------------------------------
 

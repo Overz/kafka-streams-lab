@@ -1,0 +1,59 @@
+# Dex -- provedor OIDC do lab: um login so para kafbat e OpenObserve, sem
+# depender de Google/GitHub (que exigiriam client secret externo e internet).
+#
+# Montado em /etc/dex/config.docker.yaml, que e o CMD padrao da imagem.
+#
+# issuer usa localhost porque e o nome que o BROWSER usa. Os dois clientes lidam
+# com isso de formas diferentes:
+#
+#   kafbat      config explicita por endpoint -- authorization em localhost:5556
+#               (browser), token/keys/userinfo em dex:5556 (container). Nao ha
+#               discovery, entao os dois nomes coexistem.
+#   openobserve tem UMA url so (O2_DEX_BASE_URL) para as duas pontas; por isso
+#               este container roda no namespace de rede dele, e "localhost:5556"
+#               vale tanto para o browser quanto para o processo.
+issuer: "http://localhost:5556/dex"
+
+# sqlite3 num volume, nao memoria: o storage guarda as CHAVES DE ASSINATURA. Com
+# "memory", todo restart do Dex gera chaves novas e o OpenObserve, que cacheia o
+# JWKS por 10 minutos, passa a rejeitar os tokens com 401 ate o cache expirar.
+storage:
+  type: "sqlite3"
+  config:
+    file: "/var/dex/dex.db"
+
+web:
+  http: "0.0.0.0:5556"
+
+oauth2:
+  responseTypes: [ "code" ]
+  skipApprovalScreen: true       # sem tela de consentimento a cada login
+  alwaysShowLoginScreen: false
+
+staticClients:
+  - id: "kafbat-ui"
+    name: "Kafbat UI"
+    secret: "kafbat-ui-secret"
+    redirectURIs:
+      - "http://localhost:8080/login/oauth2/code/dex"
+
+  # OpenObserve enterprise. O caminho /config/redirect e fixo do produto (o
+  # backend troca o code ali); depois ele manda o browser para /web/cb.
+  # O secret precisa ser identico ao O2_DEX_CLIENT_SECRET em ../openobserve/compose.yaml.
+  - id: "o2-client"
+    name: "OpenObserve"
+    secret: "bzItbGFiLXNlY3JldA=="
+    redirectURIs:
+      - "http://localhost:5080/config/redirect"
+
+# Banco de senha embutido -- sem conector externo (LDAP, GitHub, ...).
+enablePasswordDB: true
+staticPasswords:
+  - email: "admin@admin"
+    # bcrypt da string "admin". Gerado com:
+    #   docker run --rm httpd:2.4-alpine htpasswd -bnBC 10 "" admin
+    # O prefixo sai como $2y$ e precisa virar $2a$: a lib bcrypt do Go, que o
+    # Dex usa, so aceita $2a$ e $2b$ -- com $2y$ todo login falha.
+    hash: "$2a$10$xYrxIHSMEwpmmcvbUkohpOAld/CVrxWp3BnB6SKkk40VSW0Fgilxe"
+    username: "admin"
+    userID: "08a8684b-db88-4b73-90a9-3cd1661f5466"

@@ -1,0 +1,40 @@
+# Job que cria os topicos dos dois clusters e sai.
+#
+# auto.create.topics.enable=false e deliberado (ver scripts/create-topics.sh),
+# entao sem este servico o lab sobe sem topico nenhum e o primeiro producer trava
+# em UNKNOWN_TOPIC_OR_PARTITION. Era um passo do Makefile; virou servico para que
+# "docker compose up -d" sozinho baste.
+#
+# Roda de novo a qualquer momento -- o script e idempotente:
+#   docker compose up kafka-init-topics
+#
+# Fica em infra/kafka/ e nao numa pasta propria porque o que ele cria e dado de
+# Kafka; e a unica peca fora do MM2 que fala com os dois clusters.
+networks:
+  cluster-a:
+    name: "cluster-a"
+  cluster-b:
+    name: "cluster-b"
+
+services:
+  kafka-init-topics:
+    build:
+      context: "."
+    image: "kafka-streams-lab/kafka:4.1.1"
+    container_name: "kafka-init-topics"
+    # "no": e um job, nao um servico. Sem isso o container reiniciaria em loop
+    # depois de terminar com sucesso.
+    restart: "no"
+    entrypoint: [ "/bin/bash", "/opt/scripts/create-topics.sh" ]
+    volumes:
+      - "./scripts:/opt/scripts:ro"
+    depends_on:
+      kafka-broker-a-1: { condition: "service_healthy" }
+      kafka-broker-a-2: { condition: "service_healthy" }
+      kafka-broker-a-3: { condition: "service_healthy" }
+      kafka-broker-b-1: { condition: "service_healthy" }
+      kafka-broker-b-2: { condition: "service_healthy" }
+      kafka-broker-b-3: { condition: "service_healthy" }
+    networks:
+      - "cluster-a"
+      - "cluster-b"

@@ -1,6 +1,9 @@
-# O Kafka so fala JMX; o OTel Collector do grafana/otel-lgtm so raspa Prometheus.
-# O jmx_prometheus_javaagent faz a ponte, e precisa estar DENTRO do processo da JVM
+# O Kafka so fala JMX; o OTel Collector so raspa Prometheus. O
+# jmx_prometheus_javaagent faz a ponte, e precisa estar DENTRO do processo da JVM
 # do Kafka -- por isso uma imagem propria em vez de um sidecar.
+#
+# O /metrics na 7071 nao sabe quem vai le-lo: trocar o backend (era
+# grafana/otel-lgtm, hoje otelcol -> OpenObserve) nao muda nada aqui.
 FROM apache/kafka:4.1.1
 
 USER root

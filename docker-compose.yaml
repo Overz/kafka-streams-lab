@@ -1,24 +1,45 @@
 # Ponto de entrada da infraestrutura do lab.
 #
-#   docker compose up -d --wait
+#   docker compose up -d --wait     sobe tudo, constroi as imagens e cria os topicos
+#   docker compose down             para tudo, preserva os volumes
+#   docker compose down -v          apaga volumes e redes tambem
 #
-# Os quatro arquivos incluidos ficam em infra/kafka/ e continuam legiveis
-# isolados: abrir cluster-a.yaml mostra um cluster, nao os 16 servicos
-# intercalados. O "include" junta todos num unico projeto compose, o que tambem
-# permite ao MirrorMaker 2 declarar depends_on nos brokers dos dois clusters --
-# com projetos separados isso nao seria possivel.
+# O Makefile e so atalho: nada aqui depende dele.
+#
+# Um arquivo por dominio, cada um na propria pasta com o que so ele usa (config,
+# Dockerfile, scripts). Abrir infra/kafka/cluster-a.yaml mostra um cluster, nao
+# os 21 servicos intercalados. O "include" junta todos num unico projeto compose,
+# o que tambem permite ao MirrorMaker 2 declarar depends_on nos brokers dos dois
+# clusters -- com projetos separados isso nao seria possivel.
 #
 # Desenho e justificativas: docs/superpowers/specs/2026-08-07-kafka-multi-cluster-ha-design.md
-# Como usar e exercicios de falha: infra/kafka/README.md
+# Como usar e exercicios de falha: infra/README.md
 name: "kafka-streams-lab"
 
 include:
+  # --- Kafka ---------------------------------------------------------------
   # Cluster A -- dominio orders. 3 controllers + 3 brokers, rede cluster-a.
   - "infra/kafka/cluster-a.yaml"
   # Cluster B -- dominio antifraud. Mesma forma, rede cluster-b.
   - "infra/kafka/cluster-b.yaml"
-  # A unica ponte de dados entre os dois: 2 instancias de MirrorMaker 2.
-  - "infra/kafka/mirror.yaml"
-  # kafbat (estado atual) e grafana-lgtm (historico). Sobe junto; para deixar de
-  # fora, use "docker compose stop kafbat grafana-lgtm" ou "make observability-down".
-  - "infra/kafka/observability.yaml"
+  # Job que cria os topicos dos dois clusters e sai.
+  - "infra/kafka/topics.yaml"
+
+  # A unica ponte de dados entre os clusters: 2 instancias de MirrorMaker 2.
+  - "infra/mirrormaker/compose.yaml"
+
+  # --- Estado agora --------------------------------------------------------
+  # UI dos clusters, com login OAuth2 e MCP.
+  - "infra/kafbat/compose.yaml"
+  # IdP local, serve o kafbat e o OpenObserve.
+  - "infra/dex/compose.yaml"
+
+  # --- Historico -----------------------------------------------------------
+  # Onde metrica, log e trace ficam guardados.
+  - "infra/openobserve/compose.yaml"
+  # Quem coleta e entrega ao OpenObserve.
+  - "infra/otelcol/compose.yaml"
+
+  # --- SQL sobre os topicos ------------------------------------------------
+  # Flink: SQL continuo, sem passar pelo MM2.
+  - "infra/flink/compose.yaml"

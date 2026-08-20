@@ -1,6 +1,25 @@
 lowercaseOutputName: true
 
 rules:
+# Taxa de 15 minutos de BrokerTopicMetrics, no formato que o kafbat espera:
+# nome contendo "BrokerTopicMetrics", terminando em "FifteenMinuteRate", e o
+# nome da metrica JMX vindo como LABEL (name="BytesInPerSec"). Sem estas duas
+# regras as colunas de throughput do kafbat ficam vazias -- o resto do arquivo so
+# exporta o atributo Count ("...PerSec...><>Count"), que e contador acumulado, e
+# nenhuma regra casa com <>FifteenMinuteRate.
+# Vem primeiro porque a primeira regra que casa vence.
+- pattern: kafka.server<type=BrokerTopicMetrics, name=(.+), topic=(.+)><>FifteenMinuteRate
+  name: kafka_server_BrokerTopicMetrics_FifteenMinuteRate
+  type: GAUGE
+  labels:
+    name: "$1"
+    topic: "$2"
+- pattern: kafka.server<type=BrokerTopicMetrics, name=(.+)><>FifteenMinuteRate
+  name: kafka_server_BrokerTopicMetrics_FifteenMinuteRate
+  type: GAUGE
+  labels:
+    name: "$1"
+
 # Special cases and very specific rules
 - pattern : kafka.server<type=(.+), name=(.+), clientId=(.+), topic=(.+), partition=(.*)><>Value
   name: kafka_server_$1_$2

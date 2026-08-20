@@ -1,0 +1,39 @@
+# Dex -- IdP OIDC local: um login OAuth2 para kafbat E OpenObserve, sem provedor
+# externo. Sem ele o kafbat sobe mas nenhum login completa (auth.type=OAUTH2), e o
+# OpenObserve cai de volta no usuario root local.
+#
+#   http://localhost:5556/dex     admin@admin / admin
+#
+# Nao declara ports nem networks de proposito: roda no namespace de rede do
+# OpenObserve. O OpenObserve tem UMA url so para o Dex (O2_DEX_BASE_URL) e a usa
+# nas duas pontas -- o redirect do BROWSER e a troca de token/JWKS feita pelo
+# PROCESSO. Nenhum nome serve aos dois: "localhost:5556" so vale no host,
+# "dex:5556" so vale entre containers. Compartilhando o namespace,
+# "localhost:5556" passa a valer dos dois lados; quem publica a porta e responde
+# por "dex" no DNS e o openobserve (ver ../openobserve/compose.yaml).
+#
+# Efeito colateral: todo restart OU recriacao do openobserve refaz o sandbox de
+# rede e deixa este container escutando num namespace orfao -- a 5556 para de
+# responder no host ate ele reiniciar tambem. Use "make openobserve-restart", ou
+#   docker compose restart openobserve && docker compose restart dex && \
+#   docker compose restart kafbat
+volumes:
+  # Chaves de assinatura do Dex. Perde-las a cada restart quebra o SSO do
+  # OpenObserve enquanto o cache de JWKS dele (10 min) nao expira.
+  dex-data: { name: "dex-data" }
+
+services:
+  dex:
+    image: "ghcr.io/dexidp/dex:v2.45.1"
+    container_name: "dex"
+    restart: "always"
+    network_mode: "service:openobserve"
+    depends_on:
+      - "openobserve"
+    volumes:
+      - "./config.yaml:/etc/dex/config.docker.yaml:ro"
+      - "dex-data:/var/dex"
+    deploy:
+      resources:
+        reservations: { cpus: "0.05", memory: "64M" }
+        limits: { cpus: "0.25", memory: "192M" }

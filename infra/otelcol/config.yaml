@@ -1,0 +1,136 @@
+# Config do OTel Collector (distribuicao contrib) que raspa o lab e entrega ao
+# OpenObserve. Montada em /etc/otelcol/config.yaml (ver compose.yaml ao lado).
+#
+# Os 14 alvos expoem /metrics na 7071 via jmx_prometheus_javaagent (ver ../kafka/Dockerfile).
+# O label "cluster" e o que permite comparar os dois clusters no mesmo painel.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - http://*
+  # Saida dos containers do lab. O Kafka nao fala OTLP e nao expoe log por rede:
+  # o que existe e o stdout que o docker grava em
+  # /var/lib/docker/containers/<id>/<id>-json.log. Sem este receiver o
+  # OpenObserve so recebia metrica -- a aba Logs ficava vazia.
+  #
+  # Le os arquivos de TODOS os containers do host (o caminho e por id, nao da
+  # para filtrar no glob) e descarta o que nao for do lab no operador "filter"
+  # abaixo, antes de exportar. A alternativa seria montar o docker.sock para
+  # descobrir nomes, o que da controle total do host ao collector.
+  filelog/containers:
+    include: [ "/var/lib/docker/containers/*/*-json.log" ]
+    # "end": nao reprocessa o historico inteiro a cada restart do collector.
+    start_at: "end"
+    include_file_path: true
+    operators:
+      # Cada linha e um JSON: {"log":"...","stream":"stdout","time":"...","attrs":{...}}
+      - type: "json_parser"
+        parse_from: "body"
+        timestamp:
+          parse_from: "attributes.time"
+          layout_type: "gotime"
+          layout: "2006-01-02T15:04:05.999999999Z07:00"
+      # Container sem o label configurado nao tem "attrs": e de outro projeto no
+      # mesmo host, entao para por aqui e nunca chega ao OpenObserve.
+      - type: "filter"
+        expr: 'attributes.attrs == nil'
+      # O label vem de "logging.options.labels" nos servicos (ver ../kafka/cluster-a.yaml).
+      - type: "move"
+        from: 'attributes.attrs["com.docker.compose.service"]'
+        to: "resource[\"service.name\"]"
+        on_error: "drop"
+      - type: "move"
+        from: "attributes.stream"
+        to: "attributes[\"log.iostream\"]"
+      - type: "move"
+        from: "attributes.log"
+        to: "body"
+
+  prometheus/collector:
+    config:
+      scrape_configs:
+        - job_name: "opentelemetry-collector"
+          scrape_interval: 1s
+          static_configs:
+            - targets: ["127.0.0.1:8888"]
+
+        - job_name: "kafka-cluster-a"
+          scrape_interval: 15s
+          static_configs:
+            - targets:
+                - "kafka-controller-a-1:7071"
+                - "kafka-controller-a-2:7071"
+                - "kafka-controller-a-3:7071"
+              labels: { cluster: "cluster-a", role: "controller" }
+            - targets:
+                - "kafka-broker-a-1:7071"
+                - "kafka-broker-a-2:7071"
+                - "kafka-broker-a-3:7071"
+              labels: { cluster: "cluster-a", role: "broker" }
+
+        - job_name: "kafka-cluster-b"
+          scrape_interval: 15s
+          static_configs:
+            - targets:
+                - "kafka-controller-b-1:7071"
+                - "kafka-controller-b-2:7071"
+                - "kafka-controller-b-3:7071"
+              labels: { cluster: "cluster-b", role: "controller" }
+            - targets:
+                - "kafka-broker-b-1:7071"
+                - "kafka-broker-b-2:7071"
+                - "kafka-broker-b-3:7071"
+              labels: { cluster: "cluster-b", role: "broker" }
+
+        - job_name: "kafka-mirror"
+          scrape_interval: 15s
+          static_configs:
+            - targets:
+                - "kafka-mirror-1:7071"
+                - "kafka-mirror-2:7071"
+              labels: { role: "mirror" }
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+    path: "/ready"
+
+processors:
+  batch:
+
+exporters:
+  # Um exporter para os tres sinais. O endpoint e a BASE: o collector acrescenta
+  # /v1/metrics, /v1/traces e /v1/logs sozinho -- por isso nao pode terminar em
+  # "/" (barra sobrando vira 404 no OpenObserve).
+  #
+  # stream-name nomeia o stream de logs e de traces. Metrica ignora o header: o
+  # nome da metrica ja vira o nome do stream.
+  otlp_http/openobserve:
+    endpoint: "http://openobserve:5080/api/default"
+    headers:
+      Authorization: "${env:O2_AUTH}"
+      stream-name: "kafka-lab"
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_http/openobserve]
+    metrics:
+      receivers: [otlp, prometheus/collector]
+      processors: [batch]
+      exporters: [otlp_http/openobserve]
+    logs:
+      receivers: [otlp, filelog/containers]
+      processors: [batch]
+      exporters: [otlp_http/openobserve]
+    # Sem pipeline de profiles: o lgtm tinha Pyroscope embutido, o OpenObserve
+    # nao ingere pprof.

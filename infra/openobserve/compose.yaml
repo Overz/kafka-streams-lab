@@ -1,0 +1,76 @@
+# OpenObserve -- historico TEMPORAL: logs, metricas e traces num binario so, com
+# UI, PromQL e SQL. Substitui o grafana/otel-lgtm (Grafana + Mimir + Loki + Tempo).
+# Nao raspa nada sozinho -- quem raspa e o otelcol (../otelcol).
+#
+#   http://localhost:5080     login pelo Dex, ou admin@admin.com / Admin@123
+#
+# Build ENTERPRISE, nao a open source: SSO e feature enterprise, e e ela que
+# deixa o Dex servir tambem este servico. Licenca comercial source-available,
+# gratuita ate 50 GB/dia de ingestao -- o lab faz alguns MB. Para voltar ao
+# AGPL puro: image "openobserve/openobserve:v0.92.1" e apagar os O2_DEX_*.
+#
+# Este arquivo tambem hospeda o Dex na pratica: ../dex/compose.yaml usa
+# "network_mode: service:openobserve" e portanto nao publica porta nenhuma. O
+# motivo esta explicado la e na secao de SSO do infra/README.md; o resumo e que o
+# OpenObserve tem UMA url so para o IdP e a usa tanto no redirect do browser
+# quanto na troca de token feita pelo processo.
+#
+# https://openobserve.ai/docs/user-guide/account-administration/identity-and-access-management/sso/
+networks:
+  cluster-a:
+    name: "cluster-a"
+  cluster-b:
+    name: "cluster-b"
+
+volumes:
+  # Parquet + indices. Sem isso, "docker compose down -v" apaga o historico --
+  # que e justamente o que este servico existe para guardar.
+  openobserve-data: { name: "openobserve-data" }
+
+services:
+  openobserve:
+    image: "public.ecr.aws/zinclabs/openobserve-enterprise:v0.92.1"
+    container_name: "openobserve"
+    restart: "always"
+    environment:
+      # Usuario root local -- continua valendo como plano B se o Dex cair
+      # (O2_DEX_NATIVE_LOGIN_ENABLED mantem o formulario de senha na tela).
+      # Duas validacoes que derrubam o processo no boot, nao na primeira request:
+      # o dominio precisa de TLD ("admin@admin" -> panic "invalid email ID") e a
+      # senha precisa de 8+ caracteres com maiuscula, minuscula, digito e
+      # especial. O usuario do Dex nao tem nenhuma das duas restricoes.
+      ZO_ROOT_USER_EMAIL: "admin@admin.com"
+      ZO_ROOT_USER_PASSWORD: "Admin@123"
+      ZO_DATA_DIR: "/data"
+      ZO_TELEMETRY: "false"
+      O2_DEX_ENABLED: "true"
+      O2_DEX_CLIENT_ID: "o2-client"
+      # Igual ao secret do staticClient em ../dex/config.yaml. A doc chama de
+      # "base64 encoded value": o que importa e ser a MESMA string dos dois lados.
+      O2_DEX_CLIENT_SECRET: "bzItbGFiLXNlY3JldA=="
+      O2_DEX_BASE_URL: "http://localhost:5556/dex"
+      O2_DEX_REDIRECT_URL: "http://localhost:5080/config/redirect"
+      O2_CALLBACK_URL: "http://localhost:5080/web/cb"
+      O2_DEX_SCOPES: "openid profile email groups offline_access"
+      O2_DEX_DEFAULT_ORG: "default"
+      O2_DEX_DEFAULT_ROLE: "admin"
+      O2_DEX_GROUP_CLAIM: "groups"
+      O2_DEX_NATIVE_LOGIN_ENABLED: "true"
+      # RBAC fica de fora: exige um servidor OpenFGA a parte e nao muda nada num
+      # lab de um usuario so.  O2_OPENFGA_ENABLED: "true"
+    ports:
+      - "5080:5080"   # UI + ingestao OTLP/HTTP (/api/<org>/v1/{logs,metrics,traces})
+      - "5081:5081"   # ingestao OTLP/gRPC
+      - "5556:5556"   # dex, que roda neste namespace de rede
+    volumes:
+      - "openobserve-data:/data"
+    deploy:
+      resources:
+        reservations: { cpus: "0.25", memory: "512M" }
+        limits: { cpus: "1.5", memory: "2G" }
+    networks:
+      # O alias mantem "dex" resolvivel para o kafbat, que fala com o IdP de fora.
+      cluster-a:
+        aliases: [ "dex" ]
+      cluster-b:
+        aliases: [ "dex" ]

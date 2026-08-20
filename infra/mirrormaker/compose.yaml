@@ -3,7 +3,7 @@
 # Duas instancias com o mesmo mm2.properties: elas formam um cluster Connect e
 # dividem as tasks. Matar uma e o exercicio 6.
 #
-# Incluido pelo compose.yaml da raiz. Como tudo vira um projeto so, o MM2 pode
+# Incluido pelo docker-compose.yaml da raiz. Como tudo vira um projeto so, o MM2 pode
 # declarar depends_on nos brokers dos DOIS clusters e esperar ambos ficarem
 # healthy -- sem isso ele sobe antes e fica em crash loop ate os clusters
 # responderem.
@@ -14,13 +14,26 @@ networks:
     name: "cluster-b"
 
 x-mirror-commons: &mirror-commons
+  # O driver json-file grava o valor destes labels em cada linha do log ("attrs"),
+  # e e assim que o otelcol descobre de qual servico veio a linha -- sem precisar
+  # do docker.sock. max-size/max-file evitam que o lab encha o disco.
+  logging:
+    driver: "json-file"
+    options:
+      labels: "com.docker.compose.service"
+      max-size: "10m"
+      max-file: "3"
+  # A imagem e a mesma do broker (o MM2 e o connect-mirror-maker.sh que vem
+  # nela); o Dockerfile vive no dominio do Kafka.
+  build:
+    context: "../kafka"
   image: "kafka-streams-lab/kafka:4.1.1"
   restart: "always"
   networks:
     - "cluster-a"
     - "cluster-b"
   volumes:
-    - "./mirror/mm2.properties:/opt/kafka/config/mm2.properties:ro"
+    - "./mm2.properties:/opt/kafka/config/mm2.properties:ro"
   # O ENTRYPOINT da imagem (/__cacert_entrypoint.sh) faz exec no CMD, entao trocar
   # so o command basta para rodar MM2 em vez do broker. O wrapper with-jmx.sh
   # continua no caminho para o agent entrar so neste processo.

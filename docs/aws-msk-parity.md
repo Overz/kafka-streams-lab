@@ -28,14 +28,15 @@ replicação entre clusters.
 | `EXTERNAL://localhost:19092` | Bootstrap brokers, um endereço por tipo de autenticação | `GetBootstrapBrokers` devolve strings diferentes para TLS, SASL/SCRAM e IAM. |
 | 2 containers MirrorMaker 2 | **MSK Replicator** | Ver seção abaixo — a diferença mais interessante. |
 | `jmx_prometheus_javaagent` + `with-jmx.sh` | **Open Monitoring**, já embutido | Expõe endpoints do JMX Exporter e do Node Exporter sem você montar nada. Os nomes das métricas JMX são os mesmos. |
-| grafana-lgtm | Amazon Managed Prometheus + Managed Grafana, ou o mesmo Grafana lendo o endpoint | O `otelcol-config.yaml` deste lab continua válido: troca os 14 alvos estáticos por service discovery. |
-| kafbat | Console do MSK + CloudWatch | Ou o próprio kafbat apontado para os bootstrap brokers. |
+| openobserve + otelcol | Amazon Managed Prometheus + Managed Grafana, ou o próprio OpenObserve lendo o endpoint | O `otelcol-config.yaml` deste lab continua válido: troca os 14 alvos estáticos por service discovery e o exporter de destino. |
+| kafbat + dex | Console do MSK + CloudWatch | Ou o próprio kafbat apontado para os bootstrap brokers, com o OAuth2 trocado do Dex para Cognito/IAM Identity Center. |
+| flink-jobmanager + flink-taskmanager | **Amazon Managed Service for Apache Flink** | O SQL não muda; muda quem opera o cluster. O conector Kafka vira responsabilidade do pacote de aplicação que você sobe, e o `bootstrap.servers` passa a apontar para os bootstrap brokers do MSK. |
 | `make kill-broker` | **não existe como operação sua** | Substituição de broker é da AWS. Você observa o efeito, não provoca. |
 | PLAINTEXT em tudo | IAM, SASL/SCRAM (Secrets Manager), mTLS (ACM Private CA) ou não-autenticado; TLS em trânsito, KMS em repouso | Ver seção de autenticação. |
 
 ## MSK Replicator vs. MirrorMaker 2
 
-MSK Replicator é a versão gerenciada do problema que o `mirror.yaml` resolve:
+MSK Replicator é a versão gerenciada do problema que o `infra/mirrormaker/` resolve:
 replicação assíncrona de dados, configurações de tópico, ACLs e offsets de
 consumer group entre clusters, com escala automática e sem infraestrutura sua.
 
@@ -160,7 +161,7 @@ Nada de lógica de negócio. Só configuração:
 | `api/internal/platform/kafka.go` | `kafka-go` precisa do mecanismo SASL do MSK IAM (ou SASL/SCRAM, que o `kafka-go` já suporta nativamente e é o caminho mais curto) |
 | `orders`, `antifraud` (`StreamsConfig`) | mesmas propriedades SASL; `replication.factor=3` continua necessário para os tópicos internos |
 | `antifraud` | se o Replicator ficar em modo Prefixed, assinar por regex em vez de nome literal, para o failover não exigir redeploy |
-| `infra/kafka/` | vira Terraform: `aws_msk_cluster`, `aws_msk_configuration`, `aws_msk_replicator`. `Dockerfile` e `with-jmx.sh` deixam de existir. |
+| `infra/kafka/` e `infra/mirrormaker/` | viram Terraform: `aws_msk_cluster`, `aws_msk_configuration`, `aws_msk_replicator`. `Dockerfile` e `with-jmx.sh` deixam de existir. |
 
 O caminho de menor atrito para experimentar em MSK sem reescrever cliente é
 **SASL/SCRAM**: o `kafka-go` e o cliente Java suportam nativamente, sem

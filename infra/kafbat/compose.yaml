@@ -1,0 +1,53 @@
+# kafbat UI -- o estado AGORA dos dois clusters: ISR por particao, particoes
+# under-replicated, controller ativo, os topicos com prefixo aparecendo do outro
+# lado, lag do consumer group do MM2.
+#
+#   http://localhost:8080     login admin@admin / admin, pelo Dex
+#
+# Entra nas duas redes. Isso enfraquece um pouco o isolamento, mas ele nao carrega
+# dado de aplicacao: le metadado e metrica.
+#
+# A configuracao real esta em config.yaml (clusters, metricas, auditoria, OAuth2,
+# MCP). Aqui ficam so as env vars que apontam para ela.
+networks:
+  cluster-a:
+    name: "cluster-a"
+  cluster-b:
+    name: "cluster-b"
+
+volumes:
+  # /etc/kafkaui e onde o kafbat grava o dynamic_config.yaml (wizard) e os
+  # uploads. Volume nomeado em vez de bind: o arquivo dinamico e reescrito pela
+  # UI e nao deve sujar o git. O dono do diretorio na imagem (kafkaui) e
+  # preservado quando o volume e criado.
+  kafbat-etc: { name: "kafbat-etc" }
+
+services:
+  kafbat:
+    image: "kafbat/kafka-ui:v1.5.0"
+    container_name: "kafbat"
+    restart: "always"
+    environment:
+      # Habilita o wizard: cluster adicionado pela UI e persistido em
+      # /etc/kafkaui/dynamic_config.yaml, somando ao config estatico.
+      DYNAMIC_CONFIG_ENABLED: "true"
+      SPRING_CONFIG_ADDITIONAL-LOCATION: "/kafbat/static-config.yaml"
+      # O WebClient do Spring mantem conexoes em pool para o Dex, e o pool do
+      # reactor-netty nao expira por padrao. Depois de um restart do Dex a
+      # conexao guardada esta morta, e o POST de troca de token nao pode ser
+      # repetido (o corpo ja foi enviado) -- o login morre com
+      # "Connection reset by peer" e HTTP 500 no /login/oauth2/code/dex.
+      # Expirando conexoes ociosas, o proprio kafbat se recupera sozinho.
+      JAVA_OPTS: "-Dreactor.netty.pool.maxIdleTime=5000 -Dreactor.netty.pool.maxLifeTime=300000"
+    ports:
+      - "8080:8080"
+    volumes:
+      - "./config.yaml:/kafbat/static-config.yaml:ro"
+      - "kafbat-etc:/etc/kafkaui"
+    deploy:
+      resources:
+        reservations: { cpus: "0.1", memory: "256M" }
+        limits: { cpus: "0.5", memory: "768M" }
+    networks:
+      - "cluster-a"
+      - "cluster-b"
