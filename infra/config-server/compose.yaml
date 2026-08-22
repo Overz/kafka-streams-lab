@@ -1,0 +1,55 @@
+# Spring Cloud Config Server -- a unica fonte de configuracao das apps Streams.
+#
+# As apps rodam no HOST (decisao D6 do desenho de infra) e consultam localhost:8888
+# durante o boot. Sem este servico de pe, nem orders nem antifraud sobem: configuracao
+# incompleta derruba o processo em vez de deixar a topologia rodar pela metade.
+#
+# Backend "native": as propriedades sao os .yaml de ./repository, montados read-only em
+# /config. Trocar um limiar de regra de fraude e editar o arquivo e reiniciar a app --
+# sem rebuild de imagem, sem recompilar Java.
+#
+#   curl -s localhost:8888/orders/local | jq .
+#   curl -s localhost:8888/antifraud/local | jq .
+#
+# Fica nas duas redes porque nao pertence a cluster nenhum: os dois dominios o consultam.
+networks:
+  cluster-a:
+    name: "cluster-a"
+  cluster-b:
+    name: "cluster-b"
+
+services:
+  config-server:
+    build:
+      # Raiz do projeto: o Dockerfile precisa do pom agregador para resolver o parent.
+      context: "../.."
+      dockerfile: "infra/config-server/Dockerfile"
+    image: "kafka-streams-lab/config-server:0.0.1"
+    container_name: "config-server"
+    restart: "always"
+    ports:
+      - "8888:8888"
+    volumes:
+      - "./repository:/config:ro"
+    # TCP puro com o /dev/tcp do bash, mesmo padrao dos brokers e do MM2: nao depende de
+    # curl estar na imagem base. A 8888 so passa a escutar depois que o contexto Spring
+    # subiu inteiro, entao o socket aberto ja implica backend native carregado.
+    healthcheck:
+      test: [ "CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8888" ]
+      interval: "10s"
+      timeout: "5s"
+      retries: 12
+      start_period: "40s"
+    deploy:
+      resources:
+        reservations: { cpus: "0.1", memory: "128M" }
+        limits: { cpus: "0.5", memory: "512M" }
+    # O driver json-file grava o valor destes labels em cada linha do log ("attrs"),
+    # que e como o receiver filelog do otelcol descobre de qual servico o log veio.
+    logging:
+      driver: "json-file"
+      options:
+        labels: "com.docker.compose.service"
+    networks:
+      - "cluster-a"
+      - "cluster-b"

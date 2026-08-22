@@ -1,0 +1,44 @@
+{
+  "name": "orders",
+  "profiles": [
+    "local"
+  ],
+  "label": null,
+  "version": null,
+  "state": null,
+  "propertySources": [
+    {
+      "name": "file:/config/orders.yaml",
+      "source": {
+        "kafka.bootstrap-servers": "localhost:19092,localhost:19093,localhost:19094",
+        "kafka.application-id": "orders-streams",
+        "kafka.client-id": "orders",
+        "kafka.state-dir": "/tmp/kafka-streams/orders",
+        "topics.order-created": "orders.created",
+        "topics.analysis-completed": "cluster-b.antifraud.analysis-completed",
+        "topics.order-validated": "orders.validated",
+        "topics.fraud-requested": "orders.fraud-requested",
+        "topics.order-approved": "orders.approved",
+        "topics.order-rejected": "orders.rejected",
+        "topics.order-processed": "orders.processed",
+        "topics.dead-letter": "orders.dlq",
+        "stores.validated-orders": "orders-validated-store",
+        "validation.currency": "BRL",
+        "validation.money-scale": 2
+      }
+    },
+    {
+      "name": "file:/config/application.yaml",
+      "source": {
+        "telemetry.endpoint": "http://localhost:4317",
+        "telemetry.timeout": "10s",
+        "kafka.num-stream-threads": 3,
+        "kafka.commit-interval": "1s",
+        "kafka.processing-guarantee": "at_least_once",
+        "kafka.deserialization-exception-handler": "log_and_continue",
+        "kafka.replication-factor": 3,
+        "dead-letter.max-payload-length": 4096
+      }
+    }
+  ]
+}

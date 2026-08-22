@@ -1,0 +1,27 @@
+# Propriedades comuns aos dois dominios. Menor precedencia: qualquer chave aqui e
+# sobrescrita pela mesma chave em orders.yaml ou antifraud.yaml.
+#
+# Este diretorio e montado em /config no container do config-server (ver ../compose.yaml).
+# Editar um arquivo aqui e reiniciar a app basta -- nao precisa rebuildar imagem nenhuma.
+telemetry:
+  # As apps rodam no host, o collector escuta na 4317 publicada pelo container.
+  endpoint: "http://localhost:4317"
+  # Timeout curto: exportacao de telemetria nunca deve segurar o processamento.
+  timeout: "10s"
+
+kafka:
+  # Streams so tem uma thread por padrao; 3 particoes por topico permitem paralelismo real.
+  num-stream-threads: 3
+  commit-interval: "1s"
+  # at_least_once e o padrao. exactly_once_v2 fica para um change proprio.
+  processing-guarantee: "at_least_once"
+  # LogAndFail seria a escolha em producao; aqui o evento invalido precisa chegar na DLQ,
+  # e quem faz esse roteamento e a propria topologia. Continue evita que um payload
+  # corrompido de um teste manual derrube o lab inteiro.
+  deserialization-exception-handler: "log_and_continue"
+  replication-factor: 3
+
+dead-letter:
+  # Quanto do payload original vai junto para a DLQ. Truncar evita que uma mensagem
+  # gigante corrompida vire uma mensagem gigante corrompida em outro topico.
+  max-payload-length: 4096

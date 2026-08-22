@@ -17,6 +17,11 @@
 name: "kafka-streams-lab"
 
 include:
+  # --- Configuracao ---------------------------------------------------------
+  # Spring Cloud Config Server. As apps Streams rodam no host e consultam a 8888 no
+  # boot; sem ele elas nao sobem. Nao pertence a cluster nenhum, fica nas duas redes.
+  - "infra/config-server/compose.yaml"
+
   # --- Kafka ---------------------------------------------------------------
   # Cluster A -- dominio orders. 3 controllers + 3 brokers, rede cluster-a.
   - "infra/kafka/cluster-a.yaml"

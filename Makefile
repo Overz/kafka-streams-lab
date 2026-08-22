@@ -18,6 +18,7 @@ CLUSTER_SERVICES = kafka-controller-$(CLUSTER)-1 kafka-controller-$(CLUSTER)-2 k
 .DEFAULT_GOAL := help
 
 .PHONY: help build up down clean topics ps logs \
+        apps-build orders antifraud apps-up e2e config \
         kill-broker start-broker kill-controller start-controller \
         kill-cluster start-cluster kill-mirror start-mirror \
         observability-up observability-down openobserve-restart quorum describe \
@@ -53,6 +54,34 @@ ps: ## Estado dos containers do lab
 
 logs: ## Segue o log de um servico: make logs N=kafka-mirror-1
 	$(COMPOSE) logs -f $(N)
+
+# --- Aplicacoes Streams ----------------------------------------------------
+# Rodam no HOST, nao no compose (decisao D6 do desenho de infra): reescrever topologia e
+# reiniciar precisa custar segundos, nao um rebuild de imagem. Elas consultam o
+# config-server em localhost:8888 no boot -- sem ele de pe, nao sobem.
+
+MVN ?= mvn
+
+# O RocksDB, usado pelos state stores, carrega biblioteca nativa por JNI. Sem esta flag o
+# JDK 25 imprime um aviso de metodo restrito a cada boot, e no futuro bloqueia a chamada.
+JAVA_FLAGS ?= --enable-native-access=ALL-UNNAMED
+
+apps-build: ## Compila e empacota as apps Streams como jar executavel
+	$(MVN) -B -pl orders,antifraud -am package -DskipTests
+
+config: ## Mostra a configuracao que o config-server entrega: make config N=orders
+	@curl -s localhost:8888/$(or $(N),orders)/local | python3 -m json.tool
+
+orders: ## Sobe o dominio orders contra o cluster A
+	$(MVN) -B -q -pl orders -am package -DskipTests
+	APP_NAME=orders java $(JAVA_FLAGS) -jar orders/target/orders-0.0.1.jar
+
+antifraud: ## Sobe o dominio antifraud contra o cluster B
+	$(MVN) -B -q -pl antifraud -am package -DskipTests
+	APP_NAME=antifraud java $(JAVA_FLAGS) -jar antifraud/target/antifraud-0.0.1.jar
+
+e2e: ## Roda os testes e2e (*IT) -- exige Docker
+	$(MVN) -B verify
 
 # --- Exercicios de falha ---------------------------------------------------
 # Tudo com "stop", nunca "down": os volumes ficam, entao da para observar o ISR

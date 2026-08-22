@@ -1,0 +1,34 @@
+# Dominio orders -- cluster A.
+kafka:
+  bootstrap-servers: "localhost:19092,localhost:19093,localhost:19094"
+  application-id: "orders-streams"
+  client-id: "orders"
+  # Fora de /tmp de proposito: o Kafka Streams avisa que o SO pode limpar o diretorio e
+  # levar junto o checkpoint, o que forca uma restauracao completa do changelog no proximo
+  # boot. Relativo ao diretorio de onde a app e iniciada.
+  state-dir: ".data/kafka-streams/orders"
+
+topics:
+  # Entradas
+  order-created: "orders.created"
+  # Vem do cluster B pelo MirrorMaker 2, por isso o prefixo com o alias da origem.
+  # A DefaultReplicationPolicy monta esse nome; mudar a policy muda esta linha.
+  analysis-completed: "cluster-b.antifraud.analysis-completed"
+
+  # Saidas
+  order-validated: "orders.validated"
+  fraud-requested: "orders.fraud-requested"
+  order-approved: "orders.approved"
+  order-rejected: "orders.rejected"
+  order-processed: "orders.processed"
+  dead-letter: "orders.dlq"
+
+stores:
+  # KTable com o retrato de cada pedido enviado a analise. E dela que saem totalAmount e
+  # currency quando a decisao do antifraude volta -- a analise nao os carrega.
+  order-state: "orders-order-state-store"
+
+validation:
+  # Escala usada em toda conta de dinheiro do dominio. E o que decide se 300.004 vira
+  # 300.00 antes de ser comparado com o totalAmount declarado.
+  money-scale: 2

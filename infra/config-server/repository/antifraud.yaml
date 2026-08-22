@@ -1,0 +1,51 @@
+# Dominio antifraud -- cluster B.
+kafka:
+  bootstrap-servers: "localhost:29092,localhost:29093,localhost:29094"
+  application-id: "antifraud-streams"
+  client-id: "antifraud"
+  state-dir: ".data/kafka-streams/antifraud"
+
+topics:
+  # Vem do cluster A pelo MirrorMaker 2. No teste e2e de um broker so, esta chave e
+  # sobrescrita para "orders.fraud-requested" -- e o motivo de nome de topico nunca
+  # ser constante em Java.
+  fraud-requested: "cluster-a.orders.fraud-requested"
+
+  analysis-completed: "antifraud.analysis-completed"
+  dead-letter: "antifraud.dlq"
+
+stores:
+  # orderId ja analisado, para a regra de idempotencia (secao 13 do documento).
+  processed-orders: "antifraud-processed-orders-store"
+  # Perfil acumulado por cliente (secao 15).
+  customer-profile: "antifraud-customer-profile-store"
+  # Contagem por janela de 1 minuto (regra 2).
+  order-burst: "antifraud-order-burst-store"
+
+rules:
+  # Regra 1 -- valor elevado.
+  high-amount:
+    threshold: 2000.00
+    points: 30
+
+  # Regra 2 -- muitos pedidos em curto periodo. "mais de 3 pedidos dentro de 1 minuto".
+  burst:
+    window: "1m"
+    max-orders: 3
+    points: 40
+
+  # Regra 3 -- valor muito acima do historico. Cliente sem historico nao dispara.
+  above-profile:
+    multiplier: 5
+    points: 30
+
+score:
+  max: 100
+  reject-at: 70
+
+idempotency:
+  # Quanto tempo um orderId analisado fica lembrado. Sem expiracao o store cresce
+  # indefinidamente, ja que Kafka e a unica fonte de dados e nada mais limpa isto.
+  retention: "24h"
+  # Frequencia do punctuator que remove as entradas vencidas.
+  cleanup-interval: "5m"

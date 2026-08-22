@@ -1,0 +1,40 @@
+# Config server do lab. Backend "native": as propriedades vem de arquivos .yaml num
+# diretorio, nao de um repositorio Git. O diretorio e montado no container a partir de
+# infra/config-server/repository/ (ver ../compose.yaml).
+#
+# Resolucao de um GET /{app}/{profile}:
+#   1. <app>-<profile>.yaml   maior precedencia
+#   2. <app>.yaml
+#   3. application-<profile>.yaml
+#   4. application.yaml       menor precedencia
+# A resposta traz cada arquivo como um propertySource separado, nessa ordem. Quem achata
+# a lista e o ConfigServerClient no modulo shared.
+server:
+  port: 8888
+
+spring:
+  application:
+    name: "config-server"
+  profiles:
+    active: "native"
+  cloud:
+    config:
+      server:
+        native:
+          # Diretorio dentro do container. Sem o prefixo file:, o Spring procuraria no
+          # classpath e devolveria 200 com propertySources vazio -- falha silenciosa.
+          search-locations: "file:/config"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,env"
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    org.springframework.cloud.config: "INFO"

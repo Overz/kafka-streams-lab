@@ -1,0 +1,103 @@
+schema: spec-driven
+
+context: |
+  # Kafka Streams Lab
+
+  Laboratorio de estudo de Kafka Streams puro. Dois dominios independentes que se
+  comunicam exclusivamente por eventos Kafka: `orders` e `antifraud`.
+  O documento de dominio e `Kafka Streams Lab.md` na raiz.
+
+  ## Stack
+
+  - Java 25 (Temurin 25.0.1), Maven 3.9.14, multi-modulo
+  - Kafka Streams 4.3.1 puro e nativo -- SEM Spring nas apps
+  - Spring Boot 4.0.8 + Spring Cloud 2025.1.3 APENAS no modulo `config-server`
+  - Lombok 1.18.46 + MapStruct 1.6.3 (+ lombok-mapstruct-binding 0.2.0)
+  - Jackson 2.22.2, SLF4J 2.0.18, Logback 1.6.3
+  - OpenTelemetry SDK 1.65.0 -> OTLP gRPC localhost:4317 -> otelcol -> OpenObserve
+  - Testes: JUnit 6.1.3, AssertJ 3.27.7, TopologyTestDriver, Cucumber 7.34.7,
+    Testcontainers 2.0.5 (artifactIds da 2.x: testcontainers-kafka, testcontainers-junit-jupiter)
+
+  ## Modulos
+
+  - `shared`  -- codigo compartilhado entre orders e antifraud (eventos, serdes, config, telemetria)
+  - `orders`  -- ciclo de vida do pedido. Roda contra o cluster A
+  - `antifraud` -- analise de risco. Roda contra o cluster B
+  - `config-server` -- Spring Cloud Config Server, backend `native`, arquivos .yaml
+  - `api` -- gerador de carga em Go, publica em orders.created
+
+  ## Infraestrutura
+
+  Dois clusters Kafka KRaft (3 controllers + 3 brokers cada), redes Docker isoladas,
+  ponte unica via MirrorMaker 2 com DefaultReplicationPolicy. Consequencia: os topicos
+  cross-dominio chegam PREFIXADOS com o alias do cluster de origem.
+
+    orders   -> cluster A (localhost:19092,19093,19094)
+    antifraud -> cluster B (localhost:29092,29093,29094)
+
+    orders.fraud-requested        --MM2--> cluster-a.orders.fraud-requested        (lido pelo antifraud)
+    antifraud.analysis-completed  --MM2--> cluster-b.antifraud.analysis-completed  (lido pelo orders)
+
+  Desenho da infra: docs/superpowers/specs/2026-08-07-kafka-multi-cluster-ha-design.md
+  As apps rodam no HOST, nao no compose.
+
+  ## Regras de implementacao (nao negociaveis)
+
+  1.  Kafka Streams usado como pipeline. Cada etapa e uma unidade unica e isolada.
+  2.  Headers de entrada e auxiliares sao livres; os auxiliares (prefixo `x-internal-`)
+      DEVEM ser removidos antes de qualquer topico de saida.
+  3.  State stores, windows e punctuators dos processors sao encorajados.
+  4.  Estrutura de pastas simples e rasa.
+  5.  Lombok: classes com @RequiredArgsConstructor e atributos `final`.
+      Records com @Jacksonized @With @Builder.
+  6.  MapStruct para toda conversao entre tipos.
+  7.  Logs consistentes e ricos em detalhe, com contexto nomeado:
+      "iniciando validacao do pedido, orderId='{}', customerId='{}'"
+      "enviando para analise antifraude, orderId='{}', topico='{}'"
+  8.  Codigo compartilhado entre orders e antifraud vive no modulo `shared`.
+  9.  Config vem do config-server no boot, desserializada em records tipados
+      atras da interface `AppConfig`. Chave ausente falha no boot, nunca em runtime.
+  10. As classes de topologia (`OrdersTopology`, `AntifraudTopology`) recebem
+      EXCLUSIVAMENTE contratos declarados pelo Kafka Streams -- Serde, ProcessorSupplier,
+      FixedKeyProcessorSupplier, ValueMapper, ValueJoiner, Aggregator, Initializer,
+      Predicate, StoreBuilder -- mais um record com nomes de topicos e stores.
+      Nenhum tipo de dominio concreto (OrderValidator, RiskCalculator) aparece na topologia.
+      A montagem das implementacoes acontece so no Main.
+  11. Kafka e a unica fonte de dados. Sem banco. State stores sao a memoria do sistema.
+  12. O modulo `api` (Go) serve para gerar carga real contra o Kafka.
+  13. Toda dependencia nova exige consultar a ultima versao em
+      https://repo1.maven.org/maven2/<path>/maven-metadata.xml
+      (o indice do search.maven.org esta desatualizado e nao deve ser usado).
+  14. Instancias em vez de metodos estaticos. O `main` monta o grafo de objetos a mao.
+  15. Sem Javadoc. Comentario so quando a linha e genuinamente dificil de entender,
+      e explicando o PORQUE, nunca o que.
+  16. `final var` em todo lugar, inclusive locais de teste. Parametro de metodo ja e
+      final: para reatribuir, criar outra variavel.
+
+  ## Testes
+
+  TDD: o teste vem antes do codigo, sempre.
+  - Unitarios: TopologyTestDriver + JUnit 6 + AssertJ. Regras de negocio testadas
+    isoladas, sem Kafka.
+  - BDD/e2e: Cucumber com feature files em Gherkin pt-BR.
+    Camada 1 (roda no `mvn verify`): Testcontainers, um broker, topico cross-dominio
+    criado ja com o prefixo `cluster-a.` para simular o MM2.
+    Camada 2 (tag `@lab`, roda no `make e2e`): compose real, dois clusters e MM2.
+
+rules:
+  proposal:
+    - Escreva em portugues do Brasil.
+    - Nomeie os topicos Kafka afetados com o nome exato, incluindo prefixo do MM2 quando aplicavel.
+  design:
+    - Escreva em portugues do Brasil.
+    - Inclua uma tabela de decisoes com a coluna "Alternativas descartadas", no mesmo
+      formato de docs/superpowers/specs/2026-08-07-kafka-multi-cluster-ha-design.md.
+    - Registre qual conceito de Kafka Streams cada decisao exercita.
+  specs:
+    - Escreva em portugues do Brasil.
+    - Cada cenario deve ser verificavel por um teste automatizado concreto.
+    - Cenarios de topologia devem nomear o topico de entrada e o de saida.
+  tasks:
+    - Escreva em portugues do Brasil.
+    - "O teste sempre vem antes da implementacao: a task do teste precede a task do codigo."
+    - Cada grupo de tasks termina com uma task de verificacao executavel.

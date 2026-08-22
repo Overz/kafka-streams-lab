@@ -33,10 +33,16 @@ TOPICS_A=(
   "orders.created"
   "orders.validated"
   "orders.fraud-requested"
+  "orders.approved"
+  "orders.rejected"
   "orders.processed"
+  # Evento que nao passou na validacao. Guarda o payload original e o motivo nos headers,
+  # entao da para reprocessar depois de corrigido o defeito.
+  "orders.dlq"
 )
 TOPICS_B=(
   "antifraud.analysis-completed"
+  "antifraud.dlq"
 )
 
 wait_for_cluster() {

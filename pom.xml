@@ -9,17 +9,45 @@
   <version>0.0.1</version>
   <packaging>pom</packaging>
 
+  <!-- config-server nao herda este pom: ele usa o parent do Spring Boot, e as
+       properties de versao daqui (logback, jackson, junit, kafka...) tem os mesmos
+       nomes das do spring-boot-dependencies e redefiniriam o BOM do Boot em silencio.
+       Continua no reactor: ser modulo nao exige ser filho. -->
   <modules>
+    <module>shared</module>
     <module>orders</module>
     <module>antifraud</module>
-    <module>shared</module>
+    <module>config-server</module>
   </modules>
 
   <properties>
     <java.version>25</java.version>
-    <maven.compiler.source>${java.version}</maven.compiler.source>
-    <maven.compiler.target>${java.version}</maven.compiler.target>
+    <maven.compiler.release>${java.version}</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    <!-- Versoes conferidas em repo1.maven.org/.../maven-metadata.xml. O indice do
+         search.maven.org esta desatualizado e nao deve ser usado para isto. -->
+    <kafka.version>4.3.1</kafka.version>
+    <jackson.version>2.22.2</jackson.version>
+    <slf4j.version>2.0.18</slf4j.version>
+    <logback.version>1.6.3</logback.version>
+    <otel.version>1.65.0</otel.version>
+    <otel-instrumentation.version>2.31.0-alpha</otel-instrumentation.version>
+    <lombok.version>1.18.46</lombok.version>
+    <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
+    <mapstruct.version>1.6.3</mapstruct.version>
+
+    <junit.version>6.1.3</junit.version>
+    <assertj.version>3.27.7</assertj.version>
+    <cucumber.version>7.34.7</cucumber.version>
+    <testcontainers.version>2.0.5</testcontainers.version>
+    <awaitility.version>4.3.0</awaitility.version>
+
+    <compiler-plugin.version>3.15.0</compiler-plugin.version>
+    <shade-plugin.version>3.6.1</shade-plugin.version>
+    <surefire-plugin.version>3.5.6</surefire-plugin.version>
+    <failsafe-plugin.version>3.5.6</failsafe-plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -27,8 +55,240 @@
       <dependency>
         <groupId>com.github.overz</groupId>
         <artifactId>shared</artifactId>
-        <version>0.0.1</version>
+        <version>${project.version}</version>
+      </dependency>
+
+      <!-- Kafka nao publica BOM: cada artefato usa a mesma propriedade. -->
+      <dependency>
+        <groupId>org.apache.kafka</groupId>
+        <artifactId>kafka-streams</artifactId>
+        <version>${kafka.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.kafka</groupId>
+        <artifactId>kafka-clients</artifactId>
+        <version>${kafka.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.kafka</groupId>
+        <artifactId>kafka-streams-test-utils</artifactId>
+        <version>${kafka.version}</version>
+        <scope>test</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-bom</artifactId>
+        <version>${otel.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>io.opentelemetry.instrumentation</groupId>
+        <artifactId>opentelemetry-instrumentation-bom-alpha</artifactId>
+        <version>${otel-instrumentation.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>${slf4j.version}</version>
+      </dependency>
+      <!-- logback-classic e logback-core precisam ser da mesma versao: misturados,
+           a primeira linha de log estoura AbstractMethodError em PatternLayout. -->
+      <dependency>
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-classic</artifactId>
+        <version>${logback.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-core</artifactId>
+        <version>${logback.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <version>${lombok.version}</version>
+        <scope>provided</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.mapstruct</groupId>
+        <artifactId>mapstruct</artifactId>
+        <version>${mapstruct.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>io.cucumber</groupId>
+        <artifactId>cucumber-bom</artifactId>
+        <version>${cucumber.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <!-- Testcontainers 2.x renomeou os artefatos: testcontainers-kafka e
+           testcontainers-junit-jupiter. Os nomes curtos da linha 1.x nao existem mais. -->
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-bom</artifactId>
+        <version>${testcontainers.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-core</artifactId>
+        <version>${assertj.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.awaitility</groupId>
+        <artifactId>awaitility</artifactId>
+        <version>${awaitility.version}</version>
+        <scope>test</scope>
       </dependency>
     </dependencies>
   </dependencyManagement>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>${compiler-plugin.version}</version>
+          <configuration>
+            <release>${maven.compiler.release}</release>
+            <parameters>true</parameters>
+            <compilerArgs>
+              <arg>-Xlint:all,-serial,-processing</arg>
+            </compilerArgs>
+            <!-- A ordem e normativa. O MapStruct le os acessores que o Lombok gera;
+                 invertida, os mappers compilam vazios e a falha so aparece em runtime.
+                 O binding no meio e o que faz o Lombok rodar antes num unico round. -->
+            <annotationProcessorPaths>
+              <path>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+              </path>
+              <path>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok-mapstruct-binding</artifactId>
+                <version>${lombok-mapstruct-binding.version}</version>
+              </path>
+              <path>
+                <groupId>org.mapstruct</groupId>
+                <artifactId>mapstruct-processor</artifactId>
+                <version>${mapstruct.version}</version>
+              </path>
+            </annotationProcessorPaths>
+          </configuration>
+        </plugin>
+
+        <!-- Surefire roda *Test: unitario, sem Docker, sem rede. -->
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${surefire-plugin.version}</version>
+          <configuration>
+            <includes>
+              <include>**/*Test.java</include>
+            </includes>
+          </configuration>
+        </plugin>
+
+        <!-- Empaca as apps Streams como jar executavel. Elas rodam no host (decisao D6
+             do desenho de infra), entao precisam de um jar com dependencias dentro. -->
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-shade-plugin</artifactId>
+          <version>${shade-plugin.version}</version>
+          <executions>
+            <execution>
+              <phase>package</phase>
+              <goals>
+                <goal>shade</goal>
+              </goals>
+              <configuration>
+                <createDependencyReducedPom>false</createDependencyReducedPom>
+                <transformers>
+                  <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                    <mainClass>${app.main.class}</mainClass>
+                  </transformer>
+                  <!-- O SDK do OTel e os serdes descobrem implementacoes por
+                       META-INF/services; sem concatenar, o ultimo jar sombreado apaga os
+                       registros dos anteriores e o autoconfigure nao acha exportador. -->
+                  <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                </transformers>
+                <filters>
+                  <filter>
+                    <artifact>*:*</artifact>
+                    <excludes>
+                      <exclude>META-INF/*.SF</exclude>
+                      <exclude>META-INF/*.DSA</exclude>
+                      <exclude>META-INF/*.RSA</exclude>
+                      <exclude>module-info.class</exclude>
+                    </excludes>
+                  </filter>
+                </filters>
+              </configuration>
+            </execution>
+          </executions>
+        </plugin>
+
+        <!-- Failsafe roda *IT: e2e, exige Docker. Pulavel com -DskipITs. -->
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-failsafe-plugin</artifactId>
+          <version>${failsafe-plugin.version}</version>
+          <configuration>
+            <includes>
+              <include>**/*IT.java</include>
+            </includes>
+          </configuration>
+          <executions>
+            <execution>
+              <goals>
+                <goal>integration-test</goal>
+                <goal>verify</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
 </project>

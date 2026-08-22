@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Configuracao unica de log das aplicacoes Streams. Fica no shared, e nao duplicada em
+  orders e antifraud, porque o formato do log e parte do contrato de observabilidade do
+  lab: os dois dominios precisam sair iguais no OpenObserve para poderem ser comparados.
+
+  Dois destinos:
+    CONSOLE  o terminal de quem esta rodando a app no host
+    OTEL     o collector, via OTLP — so passa a exportar depois de
+             OpenTelemetryAppender.install(sdk), no OpenTelemetryBootstrap
+-->
+<configuration>
+
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <!-- trace_id e span_id no console: e o que permite pegar um trace no OpenObserve
+           a partir de uma linha vista no terminal. -->
+      <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{28} [%X{trace_id:-}] - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <!-- Sem opcoes de captura aqui: o SDK as define por otel.instrumentation.logback-appender.*
+       no OpenTelemetryBootstrap, e declarar nos dois lugares faz o appender avisar que a
+       configuracao do arquivo foi ignorada. -->
+  <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender"/>
+
+  <!-- INFO: em DEBUG o Kafka Streams loga por registro processado e o console fica
+       inutilizavel com qualquer carga real. -->
+  <logger name="org.apache.kafka" level="WARN"/>
+  <logger name="org.apache.kafka.streams" level="INFO"/>
+  <logger name="com.github.overz" level="INFO"/>
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+    <appender-ref ref="OTEL"/>
+  </root>
+</configuration>
