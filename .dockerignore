@@ -1,0 +1,14 @@
+# O config-server constroi com a RAIZ do projeto como contexto (precisa do pom
+# agregador e dos poms irmaos para resolver o parent). Sem este arquivo o daemon
+# receberia .git/, os target/ de quatro modulos e o estado local de tmp/.
+.git/
+.idea/
+tmp/
+**/target/
+**/*.iml
+*.log
+
+# Nada de infra ou documentacao entra em imagem alguma.
+infra/
+docs/
+openspec/

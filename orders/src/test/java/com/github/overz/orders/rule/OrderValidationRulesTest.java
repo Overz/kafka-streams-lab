@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import static com.github.overz.orders.rule.ValidationReason.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("Regras de validacao do pedido")
@@ -30,7 +31,7 @@ class OrderValidationRulesTest {
         .createdAt(Instant.parse("2026-08-07T18:30:00Z"));
   }
 
-  private List<String> motivosDe(final OrderCreated pedido) {
+  private List<ValidationReason> motivosDe(final OrderCreated pedido) {
     return rules.validate(pedido).stream().map(OrderValidationRule.Violation::reason).toList();
   }
 
@@ -73,31 +74,31 @@ class OrderValidationRulesTest {
     @Test
     @DisplayName("Quando falta orderId, Entao o motivo e ORDER_ID_REQUIRED")
     void semOrderId() {
-      assertThat(motivosDe(pedidoValido().orderId(null).build())).contains("ORDER_ID_REQUIRED");
+      assertThat(motivosDe(pedidoValido().orderId(null).build())).contains(ORDER_ID_REQUIRED);
     }
 
     @Test
     @DisplayName("Quando orderId e apenas espacos, Entao tambem e ORDER_ID_REQUIRED")
     void orderIdEmBranco() {
-      assertThat(motivosDe(pedidoValido().orderId("   ").build())).contains("ORDER_ID_REQUIRED");
+      assertThat(motivosDe(pedidoValido().orderId("   ").build())).contains(ORDER_ID_REQUIRED);
     }
 
     @Test
     @DisplayName("Quando falta customerId, Entao o motivo e CUSTOMER_ID_REQUIRED")
     void semCustomerId() {
-      assertThat(motivosDe(pedidoValido().customerId(null).build())).contains("CUSTOMER_ID_REQUIRED");
+      assertThat(motivosDe(pedidoValido().customerId(null).build())).contains(CUSTOMER_ID_REQUIRED);
     }
 
     @Test
     @DisplayName("Quando falta currency, Entao o motivo e CURRENCY_REQUIRED")
     void semCurrency() {
-      assertThat(motivosDe(pedidoValido().currency(null).build())).contains("CURRENCY_REQUIRED");
+      assertThat(motivosDe(pedidoValido().currency(null).build())).contains(CURRENCY_REQUIRED);
     }
 
     @Test
     @DisplayName("Quando falta createdAt, Entao o motivo e CREATED_AT_REQUIRED")
     void semCreatedAt() {
-      assertThat(motivosDe(pedidoValido().createdAt(null).build())).contains("CREATED_AT_REQUIRED");
+      assertThat(motivosDe(pedidoValido().createdAt(null).build())).contains(CREATED_AT_REQUIRED);
     }
 
     @Test
@@ -105,7 +106,7 @@ class OrderValidationRulesTest {
     void doisMotivos() {
       final var motivos = motivosDe(pedidoValido().orderId(null).currency(null).build());
 
-      assertThat(motivos).contains("ORDER_ID_REQUIRED", "CURRENCY_REQUIRED");
+      assertThat(motivos).contains(ORDER_ID_REQUIRED, CURRENCY_REQUIRED);
     }
   }
 
@@ -116,13 +117,13 @@ class OrderValidationRulesTest {
     @Test
     @DisplayName("Quando a lista de itens e vazia, Entao o motivo e ITEMS_REQUIRED")
     void semItens() {
-      assertThat(motivosDe(pedidoValido().items(List.of()).build())).contains("ITEMS_REQUIRED");
+      assertThat(motivosDe(pedidoValido().items(List.of()).build())).contains(ITEMS_REQUIRED);
     }
 
     @Test
     @DisplayName("Quando a lista de itens e nula, Entao o motivo e ITEMS_REQUIRED")
     void itensNulos() {
-      assertThat(motivosDe(pedidoValido().items(null).build())).contains("ITEMS_REQUIRED");
+      assertThat(motivosDe(pedidoValido().items(null).build())).contains(ITEMS_REQUIRED);
     }
 
     @Test
@@ -131,7 +132,7 @@ class OrderValidationRulesTest {
       final var pedido = pedidoValido()
           .items(List.of(new OrderItem(null, 2, new BigDecimal("150.00")))).build();
 
-      assertThat(motivosDe(pedido)).contains("ITEM_PRODUCT_ID_REQUIRED");
+      assertThat(motivosDe(pedido)).contains(ITEM_PRODUCT_ID_REQUIRED);
     }
 
     @Test
@@ -142,7 +143,7 @@ class OrderValidationRulesTest {
           .totalAmount(new BigDecimal("0.00"))
           .build();
 
-      assertThat(motivosDe(pedido)).contains("ITEM_QUANTITY_MUST_BE_POSITIVE");
+      assertThat(motivosDe(pedido)).contains(ITEM_QUANTITY_MUST_BE_POSITIVE);
     }
 
     @Test
@@ -153,7 +154,7 @@ class OrderValidationRulesTest {
           .totalAmount(new BigDecimal("0.00"))
           .build();
 
-      assertThat(motivosDe(pedido)).contains("ITEM_UNIT_PRICE_MUST_BE_POSITIVE");
+      assertThat(motivosDe(pedido)).contains(ITEM_UNIT_PRICE_MUST_BE_POSITIVE);
     }
   }
 
@@ -166,7 +167,7 @@ class OrderValidationRulesTest {
     void divergente() {
       final var pedido = pedidoValido().totalAmount(new BigDecimal("999.00")).build();
 
-      assertThat(motivosDe(pedido)).contains("TOTAL_AMOUNT_MISMATCH");
+      assertThat(motivosDe(pedido)).contains(TOTAL_AMOUNT_MISMATCH);
     }
 
     @Test
@@ -175,7 +176,7 @@ class OrderValidationRulesTest {
       final var pedido = pedidoValido().totalAmount(new BigDecimal("999.00")).build();
 
       final var detalhe = rules.validate(pedido).stream()
-          .filter(v -> v.reason().equals("TOTAL_AMOUNT_MISMATCH"))
+          .filter(v -> v.reason().equals(TOTAL_AMOUNT_MISMATCH))
           .findFirst()
           .orElseThrow()
           .detail();
@@ -188,7 +189,7 @@ class OrderValidationRulesTest {
     void totalZero() {
       final var pedido = pedidoValido().totalAmount(BigDecimal.ZERO).build();
 
-      assertThat(motivosDe(pedido)).contains("TOTAL_AMOUNT_MUST_BE_POSITIVE");
+      assertThat(motivosDe(pedido)).contains(TOTAL_AMOUNT_MUST_BE_POSITIVE);
     }
   }
 
@@ -212,11 +213,11 @@ class OrderValidationRulesTest {
       final var custom = new OrderValidationRules(List.of(
           new OrderIdRequiredRule(),
           order -> Optional.of(
-              new OrderValidationRule.Violation("SEMPRE_REJEITA", "regra de teste"))));
+              new OrderValidationRule.Violation(ORDER_ID_REQUIRED, "regra de teste"))));
 
       assertThat(custom.validate(pedidoValido().build()))
           .extracting(OrderValidationRule.Violation::reason)
-          .containsExactly("SEMPRE_REJEITA");
+          .containsExactly(ORDER_ID_REQUIRED);
     }
   }
 }

@@ -11,11 +11,11 @@ import java.util.Optional;
 @FunctionalInterface
 public interface OrderValidationRule {
 
-  record Violation(String reason, String detail) {
-
-    public static Violation of(final String reason) {
-      return new Violation(reason, null);
-    }
+  /**
+   * O motivo e tipado; o detalhe e texto de runtime, e so existe quando o nome do motivo
+   * sozinho nao localiza o defeito. Construir pelo enum: ORDER_ID_REQUIRED.violation().
+   */
+  record Violation(ValidationReason reason, String detail) {
   }
 
   Optional<Violation> validate(OrderCreated order);

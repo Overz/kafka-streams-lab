@@ -1,0 +1,15 @@
+### Health da API
+# 200 com {"ok":true}. A 8090 so passa a escutar depois que a API conectou nos brokers,
+# entao uma resposta aqui ja implica publisher pronto -- e o mesmo raciocinio do
+# healthcheck em api/compose.yaml.
+GET {{api}}/api/health
+Accept: application/json
+
+> {%
+  client.test("responde 200", function () {
+    client.assert(response.status === 200, "esperado 200, veio " + response.status);
+  });
+  client.test("diz que esta ok", function () {
+    client.assert(response.body.ok === true, "esperado ok=true");
+  });
+%}

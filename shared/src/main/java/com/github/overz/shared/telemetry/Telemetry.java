@@ -14,6 +14,7 @@ import java.util.function.Supplier;
  * Um span por etapa do pipeline. A etapa recebe um Scope e nao o Span: assim ela nao
  * consegue esquecer de fechar nem inventar semantica de status propria.
  */
+@RequiredArgsConstructor
 public final class Telemetry {
 
   public static final AttributeKey<String> ORDER_ID = AttributeKey.stringKey("order.id");
@@ -23,11 +24,6 @@ public final class Telemetry {
 
   private final String application;
   private final Tracer tracer;
-
-  public Telemetry(final String application, final OpenTelemetry openTelemetry) {
-    this.application = application;
-    this.tracer = openTelemetry.getTracer(application);
-  }
 
   /** O que a etapa pode dizer sobre o span sem conseguir manipula-lo. */
   @RequiredArgsConstructor

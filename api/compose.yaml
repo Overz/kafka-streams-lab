@@ -1,0 +1,74 @@
+# API HTTP do lab -- a porta de entrada de orders.created.
+#
+# E o unico produtor do lab que nao e Kafka Streams, e o unico servico em Go. Todo o
+# resto do fluxo reage ao que sai daqui:
+#
+#   POST /api/orders  ->  orders.created  ->  orders (Streams)  ->  ...  ->  orders.processed
+#
+# Diferente das apps Streams, esta roda NO COMPOSE e nao no host: nao tem topologia para
+# reescrever, entao nao paga o custo que a decisao D6 evita. Por isso fala com os brokers
+# pelo listener INTERNAL (kafka-broker-a-1:9092) e nao pelo EXTERNAL da 19092.
+#
+# Nao consulta o config-server: toda a configuracao entra por variavel de ambiente (ver
+# internal/config/config.go). O config-server serve as apps Streams.
+#
+#   curl -s localhost:8090/api/health
+#   curl -s -X POST localhost:8090/api/orders -H 'content-type: application/json' -d @pedido.json
+#
+# Requisicoes prontas para disparar: docs/http/
+networks:
+  cluster-a:
+    name: "cluster-a"
+
+services:
+  api:
+    build:
+      # A propria pasta: api/ e um modulo Go independente, com go.mod proprio, e nao
+      # compartilha nada com os modulos Maven -- diferente do config-server, que precisa
+      # da raiz para achar o pom agregador.
+      context: "."
+    image: "kafka-streams-lab/api:0.0.1"
+    container_name: "api"
+    restart: "always"
+    ports:
+      - "8090:8090"
+    environment:
+      APP_ENV: "dev"
+      # Mesmo nome e mesmo default do lado Java. Override do shell do host:
+      #   LOG_LEVEL=info docker compose up -d api
+      LOG_LEVEL: "${LOG_LEVEL:-debug}"
+      HTTP_PORT: "8090"
+      HTTP_SHUTDOWN_TIMEOUT: "10s"
+      # Os tres enderecos, nao um: com so um, o broker daquele endereco fora do ar
+      # (exercicio 1) impede ate a descoberta do cluster.
+      KAFKA_BROKERS: "kafka-broker-a-1:9092,kafka-broker-a-2:9092,kafka-broker-a-3:9092"
+      KAFKA_WRITE_TIMEOUT: "10s"
+      # Tem de bater com o nome em config-server/src/main/resources/kafka/orders.yaml.
+      # O writer roda com AllowAutoTopicCreation=false, entao um nome errado aqui falha
+      # na hora em vez de criar um topico solto que ninguem consome.
+      ORDER_INPUT_TOPIC: "orders.created"
+    # wget do busybox, que ja vem na base alpine. A API so escuta depois de ter conectado
+    # nos brokers, entao a 8090 respondendo implica publisher pronto.
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:8090/api/health" ]
+      interval: "10s"
+      timeout: "5s"
+      retries: 6
+      start_period: "20s"
+    # So os brokers do cluster A: e o unico cluster em que esta API escreve.
+    depends_on:
+      kafka-broker-a-1: { condition: "service_healthy" }
+      kafka-broker-a-2: { condition: "service_healthy" }
+      kafka-broker-a-3: { condition: "service_healthy" }
+    deploy:
+      resources:
+        reservations: { cpus: "0.1", memory: "32M" }
+        limits: { cpus: "0.5", memory: "128M" }
+    # O driver json-file grava o valor destes labels em cada linha do log ("attrs"),
+    # que e como o receiver filelog do otelcol descobre de qual servico o log veio.
+    logging:
+      driver: "json-file"
+      options:
+        labels: "com.docker.compose.service"
+    networks:
+      - "cluster-a"

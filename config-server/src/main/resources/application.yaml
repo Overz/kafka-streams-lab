@@ -1,16 +1,51 @@
 # Config server do lab. Backend "native": as propriedades vem de arquivos .yaml num
 # diretorio, nao de um repositorio Git. O diretorio e montado no container a partir de
-# infra/config-server/repository/ (ver ../compose.yaml).
+# config-server/repository/ (ver o compose.yaml na raiz do modulo).
 #
-# Resolucao de um GET /{app}/{profile}:
+# Todo endpoint do config server fica sob /lab (spring.cloud.config.server.prefix), que e
+# o namespace deste projeto. O actuator NAO se move junto: continua em /actuator.
+#
+# A consulta normal do lab e por namespace + aplicacao, sem o segmento de profile:
+#
+#   GET /lab/orders          <- DefaultProfileController, assume lab.config.default-profile
+#   GET /lab/orders/prod     <- forma longa do Spring Cloud, profile explicito
+#
+# O atalho e codigo nosso: o EnvironmentController do Spring Cloud so declara
+# /{name}/{profiles} e /{name}/{profiles}/{label}, sempre dois segmentos no minimo.
+#
+# Resolucao de um GET /lab/{app}/{profile}:
 #   1. <app>-<profile>.yaml   maior precedencia
 #   2. <app>.yaml
 #   3. application-<profile>.yaml
 #   4. application.yaml       menor precedencia
 # A resposta traz cada arquivo como um propertySource separado, nessa ordem. Quem achata
 # a lista e o ConfigServerClient no modulo shared.
+#
+# O prefixo e um segmento a parte do profile de proposito: /lab/orders hoje,
+# /lab/orders/prod amanha, sem remodelar nada.
+
 server:
   port: 8888
+
+lab:
+  config:
+    # Profile assumido quando a URL nao traz um. Fora do namespace spring.cloud.* porque e
+    # propriedade nossa, lida pelo DefaultProfileController.
+    default-profile: "local"
+
+  kafka:
+    topics:
+      # Criacao dos topicos declarados em resources/kafka/*.yaml, um arquivo por dominio.
+      # So cria: topico existente e ignorado, nunca alterado nem apagado.
+      enabled: true
+      # Padrao de Resource do Spring. Trocar para "file:/kafka/*.yaml" e montar um
+      # diretorio faz os topicos serem editaveis sem rebuild, como o /config ja e.
+      location: "classpath*:kafka/*.yaml"
+      timeout: "15s"
+      # Os brokers podem estar subindo junto: 30 x 5s cobre a partida do lab inteiro. Nao
+      # ha depends_on nos brokers -- servir configuracao nao depende do Kafka estar de pe.
+      attempts: 30
+      backoff: "5s"
 
 spring:
   application:
@@ -20,6 +55,9 @@ spring:
   cloud:
     config:
       server:
+        # Namespace do lab. Sem isto os endpoints ficariam na raiz e dividiriam o espaco
+        # de URL com o actuator e com qualquer outra coisa servida na 8888.
+        prefix: "/lab"
         native:
           # Diretorio dentro do container. Sem o prefixo file:, o Spring procuraria no
           # classpath e devolveria 200 com propertySources vazio -- falha silenciosa.
@@ -29,12 +67,27 @@ management:
   endpoints:
     web:
       exposure:
-        include: "health,info,env"
+        # loggers: le e MUDA nivel em runtime, sem reiniciar --
+        #   curl localhost:8888/actuator/loggers/com.github.overz
+        include: "health,info,env,loggers"
   endpoint:
     health:
       probes:
         enabled: true
 
+# Mesma LOG_LEVEL, mesmo default, que as apps Streams (shared/src/main/resources/logback.xml)
+# e a API em Go. Aqui nao ha logback.xml proprio: o Boot ja configura o Logback, e o que
+# falta e so o nivel -- que sai daqui, resolvido do ambiente.
+#
+#   LOG_LEVEL=info docker compose up -d config-server
+#
+# Terceiros com knob proprio: com a raiz em DEBUG, o Spring despeja a autoconfiguracao
+# inteira e o cliente Kafka uma linha por chamada, e o log do provisionamento de topicos
+# se perde no meio.
 logging:
   level:
-    org.springframework.cloud.config: "INFO"
+    root: "${LOG_LEVEL:debug}"
+    com.github.overz: "${LOG_LEVEL:debug}"
+    org.springframework: "${SPRING_LOG_LEVEL:info}"
+    org.springframework.cloud.config: "${SPRING_LOG_LEVEL:info}"
+    org.apache.kafka: "${KAFKA_LOG_LEVEL:warn}"

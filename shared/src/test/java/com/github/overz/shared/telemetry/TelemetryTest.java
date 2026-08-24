@@ -28,7 +28,7 @@ class TelemetryTest {
             .build())
         .build();
 
-    telemetry = new Telemetry("orders", sdk);
+    telemetry = new Telemetry("orders", sdk.getTracer("orders"));
   }
 
   @Nested

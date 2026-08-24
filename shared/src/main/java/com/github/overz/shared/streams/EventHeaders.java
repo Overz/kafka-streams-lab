@@ -4,11 +4,11 @@ package com.github.overz.shared.streams;
  * Nomes dos headers que circulam no lab. Sao constantes de protocolo entre os dois
  * dominios, nao comportamento: quem manipula header e o HeaderCleanupProcessor e as
  * proprias etapas.
- *
+ * <p>
  * Tres familias:
- *   entrada    chegam do produtor e atravessam o pipeline inteiro ate a saida
- *   auxiliares prefixo x-internal-, existem so entre etapas e sao removidos no sink
- *   erro       so aparecem na DLQ, promovidos a partir dos auxiliares
+ * entrada    chegam do produtor e atravessam o pipeline inteiro ate a saida
+ * auxiliares prefixo x-internal-, existem so entre etapas e sao removidos no sink
+ * erro       so aparecem na DLQ, promovidos a partir dos auxiliares
  */
 public final class EventHeaders {
 

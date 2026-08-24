@@ -1,0 +1,50 @@
+# Topicos do dominio orders -- cluster A.
+#
+# Quem cria e o config-server, no boot, lendo este arquivo. So CRIA: topico que ja existe
+# e ignorado, nunca alterado nem apagado. Mudar particoes ou retencao de um topico vivo e
+# operacao destrutiva e fica de fora de proposito -- faca no kafka-topics.sh --alter.
+#
+# Os enderecos sao os da rede docker, e nao os do host: quem provisiona roda em container.
+#
+# NAO declare aqui os topicos replicados (cluster-b.antifraud.analysis-completed): quem os
+# cria e o MirrorMaker 2, com o mesmo numero de particoes da origem. Declarar aqui criaria
+# um topico vazio com o nome certo e o MM2 nunca o preencheria direito.
+bootstrap-servers: "kafka-broker-a-1:9092,kafka-broker-a-2:9092,kafka-broker-a-3:9092"
+
+# Aplicado a todo topico da lista que nao declarar o proprio valor.
+defaults:
+  partitions: 3
+  replication-factor: 3
+  configs:
+    # RF=3 com min.isr=2 aguenta perder um broker e continuar aceitando escrita.
+    min.insync.replicas: "2"
+
+topics:
+  - name: "orders.created"
+  - name: "orders.validated"
+  - name: "orders.fraud-requested"
+  - name: "orders.approved"
+  - name: "orders.rejected"
+  - name: "orders.processed"
+
+  # Evento que nao passou na validacao. Guarda o payload original e o motivo nos headers,
+  # entao da para reprocessar depois de corrigido o defeito -- por isso vive mais que os
+  # outros e ganha teto de tamanho.
+  - name: "orders.dlq"
+    configs:
+      # 30 dias.
+      retention.ms: "2592000000"
+      # 1 GiB por particao. O que passar disso e descartado por idade, do mais antigo.
+      retention.bytes: "1073741824"
+
+# Qualquer chave aceita pelo Kafka em "kafka-topics.sh --config" vale dentro de configs.
+# O broker valida: chave desconhecida faz a criacao falhar com a mensagem dele, e o nome
+# do topico aparece no log do config-server. Alguns exemplos:
+#
+#   cleanup.policy: "compact"        delete (padrao), compact, ou "compact,delete"
+#   segment.bytes: "1073741824"      tamanho do segmento antes de rolar
+#   segment.ms: "604800000"          idade maxima do segmento antes de rolar
+#   max.message.bytes: "1048576"     maior registro aceito
+#   compression.type: "zstd"         producer (padrao), gzip, snappy, lz4, zstd
+#   delete.retention.ms: "86400000"  quanto tempo a tombstone sobrevive num topico compact
+#   min.compaction.lag.ms: "0"       espera antes de um registro poder ser compactado

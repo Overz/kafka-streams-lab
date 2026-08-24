@@ -38,8 +38,8 @@ public final class CompletionPipeline implements Pipeline {
     log.info("montando pipeline de finalizacao, entradas={}, saida='{}'", inputs, output);
 
     builder.stream(inputs, Consumed.with(keySerde, inputSerde).withName("completion-source"))
-        .processValues(completion, Named.as("completion"))
-        .processValues(HeaderCleanupProcessor.supplier(), Named.as("completion-cleanup"))
-        .to(output, Produced.with(keySerde, outputSerde).withName("completion-sink"));
+      .processValues(completion, Named.as("completion"))
+      .processValues(HeaderCleanupProcessor.supplier(), Named.as("completion-cleanup"))
+      .to(output, Produced.with(keySerde, outputSerde).withName("completion-sink"));
   }
 }

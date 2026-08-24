@@ -36,11 +36,12 @@ public final class StreamsRunner implements AutoCloseable {
                                  final TopologySupplier supplier,
                                  final KafkaConfig kafka) {
     return new StreamsRunner(
-        application,
-        supplier.topology(),
-        new StreamsProperties(kafka).toProperties(),
-        new ReplaceThreadExceptionHandler(application),
-        Duration.ofSeconds(30));
+      application,
+      supplier.topology(),
+      new StreamsProperties(kafka).toProperties(),
+      new ReplaceThreadExceptionHandler(application),
+      Duration.ofSeconds(30)
+    );
   }
 
   public void run() {
@@ -55,19 +56,15 @@ public final class StreamsRunner implements AutoCloseable {
    */
   public void start(final StateTransitionObserver observer) {
     log.info("iniciando aplicacao streams, aplicacao='{}', applicationId='{}', brokers='{}'",
-        application,
-        properties.get("application.id"),
-        properties.get("bootstrap.servers"));
+      application,
+      properties.get("application.id"),
+      properties.get("bootstrap.servers"));
 
     log.debug("topologia descrita, aplicacao='{}'\n{}", application, topology.describe());
 
     streams = new KafkaStreams(topology, properties);
     streams.setStateListener(new LoggingStateListener(application, observer));
     streams.setUncaughtExceptionHandler(exceptionHandler);
-
-    // Registrado antes do start: um Ctrl+C entre o start e o registro deixaria a
-    // aplicacao morrer no meio de um commit e o proximo boot reprocessaria.
-    Runtime.getRuntime().addShutdownHook(new Thread(this::close, application + "-shutdown"));
 
     streams.start();
     log.info("aplicacao streams iniciada, aplicacao='{}'", application);
@@ -95,12 +92,12 @@ public final class StreamsRunner implements AutoCloseable {
     }
 
     log.info("encerrando aplicacao streams, aplicacao='{}', estado='{}', timeout='{}'",
-        application, streams.state(), shutdownTimeout);
+      application, streams.state(), shutdownTimeout);
 
     final var fechou = streams.close(shutdownTimeout);
 
     log.info("aplicacao streams encerrada, aplicacao='{}', limpo={}, estadoFinal='{}'",
-        application, fechou, streams.state());
+      application, fechou, streams.state());
 
     stopped.countDown();
   }

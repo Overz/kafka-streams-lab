@@ -1,0 +1,3 @@
+# Fixture: arquivo sem cluster de destino.
+topics:
+  - name: "orders.created"

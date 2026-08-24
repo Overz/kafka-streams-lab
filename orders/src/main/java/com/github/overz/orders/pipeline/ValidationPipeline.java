@@ -40,21 +40,21 @@ public final class ValidationPipeline implements Pipeline {
   @Override
   public void build(final StreamsBuilder builder) {
     log.info("montando pipeline de validacao, entrada='{}', saidas=['{}', '{}']",
-        input, validOutput, deadLetterOutput);
+      input, validOutput, deadLetterOutput);
 
     builder.stream(input, Consumed.with(keySerde, inputSerde).withName("validation-source"))
-        .process(validation, Named.as("validation"))
-        .split(Named.as("validation-"))
-        .branch((key, outcome) -> outcome.isSuccess(),
-            Branched.withConsumer(valid -> valid
-                .mapValues(StageOutcome::value, Named.as("validation-unwrap"))
-                .processValues(HeaderCleanupProcessor.supplier(), Named.as("validation-cleanup"))
-                .to(validOutput, Produced.with(keySerde, validSerde).withName("validation-sink")), "valid"))
-        // defaultBranch e nao um segundo predicado: um evento nao pode escapar dos dois e
-        // sumir sem rastro.
-        .defaultBranch(Branched.withConsumer(invalid -> invalid
-            .processValues(deadLetter, Named.as("dead-letter"))
-            .processValues(HeaderCleanupProcessor.supplier(), Named.as("dead-letter-cleanup"))
-            .to(deadLetterOutput, Produced.with(keySerde, deadLetterSerde).withName("dead-letter-sink")), "invalid"));
+      .process(validation, Named.as("validation"))
+      .split(Named.as("validation-"))
+      .branch((_, outcome) -> outcome.isSuccess(),
+        Branched.withConsumer(valid -> valid
+          .mapValues(StageOutcome::value, Named.as("validation-unwrap"))
+          .processValues(HeaderCleanupProcessor.supplier(), Named.as("validation-cleanup"))
+          .to(validOutput, Produced.with(keySerde, validSerde).withName("validation-sink")), "valid"))
+      // defaultBranch e nao um segundo predicado: um evento nao pode escapar dos dois e
+      // sumir sem rastro.
+      .defaultBranch(Branched.withConsumer(invalid -> invalid
+        .processValues(deadLetter, Named.as("dead-letter"))
+        .processValues(HeaderCleanupProcessor.supplier(), Named.as("dead-letter-cleanup"))
+        .to(deadLetterOutput, Produced.with(keySerde, deadLetterSerde).withName("dead-letter-sink")), "invalid"));
   }
 }

@@ -28,8 +28,10 @@ docker compose down -v          # apaga volumes e redes tambem
 ```
 
 Nao ha passo anterior: o compose constroi a imagem do Kafka (`build` junto da tag nos servicos) e a do Flink, cria as
-redes `cluster-a` e `cluster-b`, e o servico `kafka-init-topics` cria os topicos assim que os seis brokers ficam
-healthy. Ele e um job -- sobe, cria e sai com `Exited (0)`, o que e o esperado no `docker compose ps -a`.
+redes `cluster-a` e `cluster-b`, e o `config-server` cria os topicos no proprio boot, a partir dos arquivos em
+`config-server/src/main/resources/kafka/` (um por dominio). Ele so cria: topico que ja existe e ignorado, nunca
+alterado nem apagado. Nao ha `depends_on` nos brokers -- servir configuracao nao pode depender do Kafka estar de pe,
+entao o provisionamento espera o cluster com backoff e desiste no log se ele nunca subir.
 
 O `Makefile` e so atalho para essas mesmas linhas (`make help` lista tudo); nada no lab depende dele.
 
@@ -38,7 +40,7 @@ O `Makefile` e so atalho para essas mesmas linhas (`make help` lista tudo); nada
 | subir | `docker compose up -d --wait` | `make up` |
 | derrubar | `docker compose down` | `make down` |
 | limpar volumes | `docker compose down -v` | `make clean` |
-| recriar topicos | `docker compose up kafka-init-topics` | `make topics` |
+| recriar topicos | `docker compose restart config-server` | `make topics` |
 | derrubar 1 broker | `docker compose stop kafka-broker-a-2` | `make kill-broker CLUSTER=a N=2` |
 | liberar RAM | `docker compose stop kafbat dex openobserve otelcol` | `make observability-down` |
 | SQL do Flink | `docker exec -it flink-jobmanager /opt/flink/bin/sql-client.sh` | `make flink-sql` |
@@ -52,10 +54,10 @@ o lab inteiro, mas abrir `kafka/cluster-a.yaml` mostra um cluster, nao os 21 ser
 
 ```
 infra/
-  kafka/          cluster-a.yaml  cluster-b.yaml  topics.yaml
+  kafka/          cluster-a.yaml  cluster-b.yaml
                   Dockerfile  with-jmx.sh  jmx/kafka.yml
                   cluster-a/common.env  cluster-b/common.env  roles/*.env
-                  scripts/create-topics.sh
+                  scripts/with-jmx.sh
   mirrormaker/    compose.yaml  mm2.properties
   kafbat/         compose.yaml  config.yaml
   dex/            compose.yaml  config.yaml
@@ -186,9 +188,9 @@ impede o cliente ate de descobrir o cluster, mesmo com os outros dois no ar.
 
 | Cluster | Topico                                                                             | Quem cria                  |
 |---------|------------------------------------------------------------------------------------|----------------------------|
-| A       | `orders.created`, `orders.validated`, `orders.fraud-requested`, `orders.processed` | `scripts/create-topics.sh` |
+| A       | `orders.created`, `orders.validated`, `orders.fraud-requested`, `orders.approved`, `orders.rejected`, `orders.processed`, `orders.dlq` | config-server, de `resources/kafka/orders.yaml` |
 | A       | `cluster-b.antifraud.analysis-completed`                                           | MirrorMaker 2              |
-| B       | `antifraud.analysis-completed`                                                     | `scripts/create-topics.sh` |
+| B       | `antifraud.analysis-completed`, `antifraud.dlq` | config-server, de `resources/kafka/antifraud.yaml` |
 | B       | `cluster-a.orders.fraud-requested`                                                 | MirrorMaker 2              |
 
 O prefixo `cluster-a.` **e o nome real do topico dentro do cluster B** -- nao e endereco nem namespace de rede. Quem

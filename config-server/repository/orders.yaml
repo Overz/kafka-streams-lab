@@ -3,10 +3,11 @@ kafka:
   bootstrap-servers: "localhost:19092,localhost:19093,localhost:19094"
   application-id: "orders-streams"
   client-id: "orders"
-  # Fora de /tmp de proposito: o Kafka Streams avisa que o SO pode limpar o diretorio e
-  # levar junto o checkpoint, o que forca uma restauracao completa do changelog no proximo
-  # boot. Relativo ao diretorio de onde a app e iniciada.
-  state-dir: ".data/kafka-streams/orders"
+  # tmp/ da RAIZ DO REPOSITORIO, e nao o /tmp do sistema: o Kafka Streams avisa quando o
+  # state.dir cai sob o java.io.tmpdir, porque o SO pode limpa-lo e levar o checkpoint
+  # junto, forcando restauracao completa do changelog no boot seguinte. Caminho relativo
+  # ao diretorio de onde a app e iniciada, que e a raiz do projeto.
+  state-dir: "tmp/kafka-streams/orders"
 
 topics:
   # Entradas

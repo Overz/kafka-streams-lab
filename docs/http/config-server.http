@@ -1,0 +1,42 @@
+### Configuracao do dominio orders
+# Forma curta: namespace + aplicacao. O profile fica a cargo do servidor
+# (lab.config.default-profile, hoje "local") -- ver DefaultProfileController.
+GET {{configServer}}/lab/orders
+Accept: application/json
+
+> {%
+  client.test("responde 200", function () {
+    client.assert(response.status === 200, "esperado 200, veio " + response.status);
+  });
+  client.test("e a config do orders", function () {
+    client.assert(response.body.name === "orders", "name inesperado: " + response.body.name);
+  });
+  client.test("traz as duas fontes, na ordem de precedencia", function () {
+    client.assert(response.body.propertySources.length === 2, "esperado 2 propertySources");
+  });
+%}
+
+### Configuracao do dominio antifraud
+GET {{configServer}}/lab/antifraud
+Accept: application/json
+
+### Forma longa, com profile explicito
+# O que o Spring Cloud Config serve de fabrica. Continua valendo e e o caminho para
+# quando existir mais de um profile.
+GET {{configServer}}/lab/orders/local
+Accept: application/json
+
+### Sem o prefixo do lab: 404
+# spring.cloud.config.server.prefix=/lab substitui a raiz, nao soma a ela.
+GET {{configServer}}/orders/local
+
+> {%
+  client.test("nao existe fora do namespace", function () {
+    client.assert(response.status === 404, "esperado 404, veio " + response.status);
+  });
+%}
+
+### Health do config-server
+# O actuator NAO acompanha o prefixo /lab.
+GET {{configServer}}/actuator/health
+Accept: application/json

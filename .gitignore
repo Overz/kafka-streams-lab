@@ -41,4 +41,9 @@ build/
 
 ### Mac OS ###
 .DS_Store
-.data/
+
+### Descartaveis ###
+# Volume, cache, saida de build, estado local: tudo o que da para apagar sem perder nada
+# vive aqui. Quem escreve: o state.dir das apps Streams (config-server/repository/*.yaml)
+# e o alvo build de api/Makefile.
+tmp/

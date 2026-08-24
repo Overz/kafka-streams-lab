@@ -12,7 +12,7 @@
   <artifactId>orders</artifactId>
 
   <properties>
-    <app.main.class>com.github.overz.orders.Main</app.main.class>
+    <app.main.class>Main</app.main.class>
   </properties>
 
   <dependencies>
@@ -44,11 +44,6 @@
       <groupId>org.apache.kafka</groupId>
       <artifactId>kafka-streams-test-utils</artifactId>
       <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.commons</groupId>
-      <artifactId>commons-lang3</artifactId>
-      <version>3.20.0</version>
     </dependency>
   </dependencies>
 

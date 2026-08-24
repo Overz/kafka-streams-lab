@@ -42,7 +42,7 @@ public final class HeaderCleanupProcessor<K, V> extends ContextualFixedKeyProces
 
     if (!removidos.isEmpty()) {
       log.debug("removendo headers auxiliares antes do sink, chave='{}', removidos={}",
-          record.key(), removidos);
+        record.key(), removidos);
     }
 
     context().forward(record);

@@ -42,6 +42,15 @@
   </dependencyManagement>
 
   <dependencies>
+    <!-- Versao gerida pelo BOM do Boot. optional para nao vazar para quem dependa deste
+         modulo; o spring-boot-maven-plugin ja o exclui do jar repackaged. Estar no
+         classpath nao basta: ver annotationProcessorPaths mais abaixo. -->
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <optional>true</optional>
+    </dependency>
+
     <dependency>
       <groupId>org.springframework.cloud</groupId>
       <artifactId>spring-cloud-config-server</artifactId>
@@ -55,6 +64,16 @@
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
 
+    <!-- AdminClient, para criar os topicos declarados em resources/kafka. Versao literal,
+         pareada com a kafka.version do agregador: o BOM do Boot gere uma anterior, e um
+         lab que fala com brokers 4.3.1 nao deve provisionar com um cliente de outra
+         geracao. Literal e nao property: este modulo nao herda do agregador. -->
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka-clients</artifactId>
+      <version>4.3.1</version>
+    </dependency>
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
@@ -64,6 +83,24 @@
 
   <build>
     <plugins>
+      <!-- Lombok tem de ser declarado como processador, e nao so estar no classpath: do
+           JDK 23 em diante o javac roda com -proc:none por padrao e ignora processador
+           descoberto pelo classpath. A versao vem do BOM do Boot, que e o parent deste
+           modulo, e nao do agregador do lab. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok</artifactId>
+              <version>${lombok.version}</version>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
+      </plugin>
+
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>

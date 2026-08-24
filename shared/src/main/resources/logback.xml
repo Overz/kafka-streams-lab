@@ -6,10 +6,28 @@
 
   Dois destinos:
     CONSOLE  o terminal de quem esta rodando a app no host
-    OTEL     o collector, via OTLP — so passa a exportar depois de
+    OTEL     o collector, via OTLP; so passa a exportar depois de
              OpenTelemetryAppender.install(sdk), no OpenTelemetryBootstrap
+
+  Nivel por variavel de ambiente, sem rebuild:
+
+    LOG_LEVEL=info make orders          so o que a app diz
+    LOG_LEVEL=trace make orders         tudo o que a app diz
+    KAFKA_LOG_LEVEL=debug make orders   abre o cliente Kafka junto
+
+  A mesma LOG_LEVEL, com o mesmo default, vale para a API em Go e para o config-server.
 -->
 <configuration>
+
+  <!-- Logback resolve nesta ordem: system property, variavel de ambiente, e por fim o
+       default depois de ":-". Um -DLOG_LEVEL=... na linha do java vence o ambiente. -->
+  <property name="LOG_LEVEL" value="${LOG_LEVEL:-DEBUG}"/>
+
+  <!-- Terceiros tem knob proprio de proposito. Com LOG_LEVEL=DEBUG por padrao, deixar o
+       cliente Kafka seguir a raiz encheria o console de uma linha por registro processado
+       e a app ficaria impossivel de acompanhar. Quem precisa depurar o Kafka liga so ele. -->
+  <property name="KAFKA_LOG_LEVEL" value="${KAFKA_LOG_LEVEL:-WARN}"/>
+  <property name="KAFKA_STREAMS_LOG_LEVEL" value="${KAFKA_STREAMS_LOG_LEVEL:-INFO}"/>
 
   <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>
@@ -24,13 +42,13 @@
        configuracao do arquivo foi ignorada. -->
   <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender"/>
 
-  <!-- INFO: em DEBUG o Kafka Streams loga por registro processado e o console fica
-       inutilizavel com qualquer carga real. -->
-  <logger name="org.apache.kafka" level="WARN"/>
-  <logger name="org.apache.kafka.streams" level="INFO"/>
-  <logger name="com.github.overz" level="INFO"/>
+  <logger name="org.apache.kafka" level="${KAFKA_LOG_LEVEL}"/>
+  <logger name="org.apache.kafka.streams" level="${KAFKA_STREAMS_LOG_LEVEL}"/>
 
-  <root level="INFO">
+  <!-- O codigo do lab acompanha a LOG_LEVEL, e e o ponto dela. -->
+  <logger name="com.github.overz" level="${LOG_LEVEL}"/>
+
+  <root level="${LOG_LEVEL}">
     <appender-ref ref="CONSOLE"/>
     <appender-ref ref="OTEL"/>
   </root>

@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 
+import static com.github.overz.shared.config.ObjectMapperConfig.json;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -23,7 +24,9 @@ class JsonSerdeTest {
 
   private static final String TOPICO = "orders.created";
 
-  private final JsonSerdes serdes = new JsonSerdes();
+  private <T> JsonSerde<T> serdeOf(final Class<T> type) {
+    return new JsonSerde<>(json(), type);
+  }
 
   private OrderCreated pedido() {
     return OrderCreated.builder()
@@ -43,7 +46,7 @@ class JsonSerdeTest {
     @Test
     @DisplayName("Quando serializado e desserializado, Entao o record e identico ao original")
     void preservaOEvento() {
-      final var serde = serdes.of(OrderCreated.class);
+      final var serde = serdeOf(OrderCreated.class);
       final var original = pedido();
 
       final var bytes = serde.serializer().serialize(TOPICO, original);
@@ -55,7 +58,7 @@ class JsonSerdeTest {
     @Test
     @DisplayName("Quando serializado, Entao o instante sai em ISO-8601 e nao em epoch")
     void instanteIso8601() {
-      final var serde = serdes.of(OrderCreated.class);
+      final var serde = serdeOf(OrderCreated.class);
 
       final var json = new String(
           serde.serializer().serialize(TOPICO, pedido()), StandardCharsets.UTF_8);
@@ -67,7 +70,7 @@ class JsonSerdeTest {
     @Test
     @DisplayName("Quando o evento tem enums, Entao saem como nome e voltam como enum")
     void enums() {
-      final var serde = serdes.of(FraudAnalysisCompleted.class);
+      final var serde = serdeOf(FraudAnalysisCompleted.class);
       final var analise = FraudAnalysisCompleted.builder()
           .orderId("ord-002")
           .customerId("cus-001")
@@ -99,7 +102,7 @@ class JsonSerdeTest {
            "campoQueOProdutorAdicionouDepois":"valor"}
           """;
 
-      final var resultado = serdes.of(OrderCreated.class)
+      final var resultado = serdeOf(OrderCreated.class)
           .deserializer()
           .deserialize(TOPICO, json.getBytes(StandardCharsets.UTF_8));
 
@@ -115,7 +118,7 @@ class JsonSerdeTest {
     @Test
     @DisplayName("Quando os bytes nao sao JSON valido, Entao lanca SerializationException nomeando o topico")
     void payloadCorrompido() {
-      final var deserializer = serdes.of(OrderCreated.class).deserializer();
+      final var deserializer = serdeOf(OrderCreated.class).deserializer();
       final var lixo = "isto nao e json".getBytes(StandardCharsets.UTF_8);
 
       assertThatThrownBy(() -> deserializer.deserialize(TOPICO, lixo))
@@ -126,7 +129,7 @@ class JsonSerdeTest {
     @Test
     @DisplayName("Quando o valor e nulo, Entao devolve nulo sem lancar")
     void tombstone() {
-      final var serde = serdes.of(OrderCreated.class);
+      final var serde = serdeOf(OrderCreated.class);
 
       assertThat(serde.serializer().serialize(TOPICO, null)).isNull();
       assertThat(serde.deserializer().deserialize(TOPICO, null)).isNull();

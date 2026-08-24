@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 
 import java.util.Optional;
 
+import static com.github.overz.orders.rule.ValidationReason.TOTAL_AMOUNT_MUST_BE_POSITIVE;
+
 @RequiredArgsConstructor
 public final class TotalAmountPositiveRule implements OrderValidationRule {
 
@@ -15,6 +17,6 @@ public final class TotalAmountPositiveRule implements OrderValidationRule {
   public Optional<Violation> validate(final OrderCreated order) {
     return money.isPositive(order.totalAmount())
         ? Optional.empty()
-        : Optional.of(Violation.of("TOTAL_AMOUNT_MUST_BE_POSITIVE"));
+        : Optional.of(TOTAL_AMOUNT_MUST_BE_POSITIVE.violation());
   }
 }

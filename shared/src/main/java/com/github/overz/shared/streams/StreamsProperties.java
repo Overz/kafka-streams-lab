@@ -24,7 +24,9 @@ public final class StreamsProperties {
     this(config, Map.of());
   }
 
-  /** Sobreposicao pontual, para o e2e trocar o application.id sem tocar no .yaml. */
+  /**
+   * Sobreposicao pontual, para o e2e trocar o application.id sem tocar no .yaml.
+   */
   public StreamsProperties with(final Map<String, Object> extra) {
     final var merged = new LinkedHashMap<>(overrides);
     merged.putAll(extra);
@@ -43,7 +45,7 @@ public final class StreamsProperties {
     props.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, config.processingGuarantee());
     props.put(StreamsConfig.REPLICATION_FACTOR_CONFIG, config.replicationFactor());
     props.put(StreamsConfig.DESERIALIZATION_EXCEPTION_HANDLER_CLASS_CONFIG,
-        deserializationExceptionHandler());
+      deserializationExceptionHandler());
 
     // Deixa o lab ja no comportamento que sera padrao no Kafka 5.0, em vez de herda-lo
     // num upgrade. Nao silencia o aviso por completo: o Kafka Streams monta instancias
@@ -59,8 +61,8 @@ public final class StreamsProperties {
       case "log_and_continue" -> LogAndContinueExceptionHandler.class;
       case "log_and_fail" -> LogAndFailExceptionHandler.class;
       default -> throw new IllegalArgumentException(
-          "kafka.deserialization-exception-handler invalido: '%s' (use log_and_continue ou log_and_fail)"
-              .formatted(config.deserializationExceptionHandler()));
+        "kafka.deserialization-exception-handler invalido: '%s' (use log_and_continue ou log_and_fail)"
+          .formatted(config.deserializationExceptionHandler()));
     };
   }
 }

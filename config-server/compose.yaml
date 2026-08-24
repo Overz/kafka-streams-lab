@@ -8,10 +8,25 @@
 # /config. Trocar um limiar de regra de fraude e editar o arquivo e reiniciar a app --
 # sem rebuild de imagem, sem recompilar Java.
 #
-#   curl -s localhost:8888/orders/local | jq .
-#   curl -s localhost:8888/antifraud/local | jq .
+#   curl -s localhost:8888/lab/orders | jq .
+#   curl -s localhost:8888/lab/antifraud | jq .
 #
-# Fica nas duas redes porque nao pertence a cluster nenhum: os dois dominios o consultam.
+# A forma longa continua valendo quando o profile importa:
+#   curl -s localhost:8888/lab/orders/prod | jq .
+#
+# Tambem cria os topicos, no proprio boot, a partir de src/main/resources/kafka/*.yaml --
+# um arquivo por dominio, cada um apontando para o cluster dele. Substituiu o job
+# kafka-init-topics e o create-topics.sh. So cria: topico existente e ignorado.
+#
+# Sem depends_on nos brokers de proposito. Servir configuracao nao pode depender do Kafka
+# estar de pe -- as apps nem sobem sem este servico. O provisionamento espera o cluster
+# com backoff (lab.kafka.topics.attempts x backoff) e desiste no log se ele nunca subir,
+# enquanto a 8888 ja responde desde o inicio.
+#
+#   docker compose restart config-server     # reprovisiona (ou: make topics)
+#
+# Fica nas duas redes porque nao pertence a cluster nenhum: os dois dominios o consultam,
+# e e delas que ele alcanca os brokers dos dois lados para criar os topicos.
 networks:
   cluster-a:
     name: "cluster-a"
@@ -22,13 +37,17 @@ services:
   config-server:
     build:
       # Raiz do projeto: o Dockerfile precisa do pom agregador para resolver o parent.
-      context: "../.."
-      dockerfile: "infra/config-server/Dockerfile"
+      context: ".."
+      dockerfile: "config-server/Dockerfile"
     image: "kafka-streams-lab/config-server:0.0.1"
     container_name: "config-server"
     restart: "always"
     ports:
       - "8888:8888"
+    environment:
+      # Nivel do log, resolvido em application.yaml. Mesmo nome e default da API e das
+      # apps Streams: LOG_LEVEL=info docker compose up -d config-server
+      LOG_LEVEL: "${LOG_LEVEL:-debug}"
     volumes:
       - "./repository:/config:ro"
     # TCP puro com o /dev/tcp do bash, mesmo padrao dos brokers e do MM2: nao depende de

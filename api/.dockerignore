@@ -1,0 +1,8 @@
+# O contexto de build e a pasta api/. Só o que o build precisa chega ao daemon: o
+# Makefile (que e quem sabe compilar), os manifestos do modulo e o fonte.
+*
+!Makefile
+!go.mod
+!go.sum
+!cmd/
+!internal/

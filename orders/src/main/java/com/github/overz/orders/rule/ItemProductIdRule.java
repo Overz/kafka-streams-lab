@@ -6,6 +6,8 @@ import com.github.overz.shared.event.OrderItem;
 import java.util.List;
 import java.util.Optional;
 
+import static com.github.overz.orders.rule.ValidationReason.ITEM_PRODUCT_ID_REQUIRED;
+
 public final class ItemProductIdRule implements OrderValidationRule {
 
   @Override
@@ -13,7 +15,7 @@ public final class ItemProductIdRule implements OrderValidationRule {
     final var items = order.items() == null ? List.<OrderItem>of() : order.items();
 
     return items.stream().anyMatch(item -> OrderIdRequiredRule.isBlank(item.productId()))
-        ? Optional.of(Violation.of("ITEM_PRODUCT_ID_REQUIRED"))
+        ? Optional.of(ITEM_PRODUCT_ID_REQUIRED.violation())
         : Optional.empty();
   }
 }

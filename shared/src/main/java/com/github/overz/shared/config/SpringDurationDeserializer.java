@@ -19,7 +19,7 @@ public final class SpringDurationDeserializer extends JsonDeserializer<Duration>
 
   @Override
   public Duration deserialize(final JsonParser parser, final DeserializationContext context)
-      throws IOException {
+    throws IOException {
     final var raw = parser.getText().trim();
 
     if (raw.startsWith("P") || raw.startsWith("-P")) {
@@ -29,7 +29,7 @@ public final class SpringDurationDeserializer extends JsonDeserializer<Duration>
     final var matcher = SIMPLE.matcher(raw);
     if (!matcher.matches()) {
       throw new IllegalArgumentException(
-          "duracao invalida: '%s' (use 1s, 5m, 24h ou ISO-8601 PT1S)".formatted(raw));
+        "duracao invalida: '%s' (use 1s, 5m, 24h ou ISO-8601 PT1S)".formatted(raw));
     }
 
     final var amount = Long.parseLong(matcher.group(1));

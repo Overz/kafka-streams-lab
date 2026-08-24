@@ -31,9 +31,9 @@ public final class Money {
 
   public BigDecimal sum(final Collection<BigDecimal> values) {
     return values.stream()
-        .filter(Objects::nonNull)
-        .reduce(BigDecimal.ZERO, BigDecimal::add)
-        .setScale(scale, rounding);
+      .filter(Objects::nonNull)
+      .reduce(BigDecimal.ZERO, BigDecimal::add)
+      .setScale(scale, rounding);
   }
 
   public BigDecimal multiply(final BigDecimal unit, final int quantity) {

@@ -34,8 +34,8 @@ public final class FraudRequestPipeline implements Pipeline {
     log.info("montando pipeline de pedido de analise, entrada='{}', saida='{}'", input, output);
 
     builder.stream(input, Consumed.with(keySerde, inputSerde).withName("fraud-request-source"))
-        .processValues(projection, Named.as("fraud-request"))
-        .processValues(HeaderCleanupProcessor.supplier(), Named.as("fraud-request-cleanup"))
-        .to(output, Produced.with(keySerde, outputSerde).withName("fraud-request-sink"));
+      .processValues(projection, Named.as("fraud-request"))
+      .processValues(HeaderCleanupProcessor.supplier(), Named.as("fraud-request-cleanup"))
+      .to(output, Produced.with(keySerde, outputSerde).withName("fraud-request-sink"));
   }
 }

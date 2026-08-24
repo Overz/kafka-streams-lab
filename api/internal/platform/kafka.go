@@ -89,11 +89,24 @@ func NewKafkaPublisher(config KafkaConfig) (*KafkaPublisher, error) {
 	// message to carry its own topic, which is exactly the per-event routing
 	// Publish does below.
 	writer := &kafka.Writer{
-		Addr:                   kafka.TCP(config.Brokers...),
-		Balancer:               &kafka.RoundRobin{},
-		RequiredAcks:           kafka.RequireAll,
-		Async:                  true,
-		AllowAutoTopicCreation: true,
+		Addr: kafka.TCP(config.Brokers...),
+		// Murmur2, not RoundRobin. RoundRobin ignores Message.Key entirely, so
+		// two events of the same order would land on different partitions and
+		// the ordering Event.Key promises would not exist. Murmur2 is also what
+		// the Java producer inside Kafka Streams uses, so a key published here
+		// reaches the same partition it would have reached from the JVM side.
+		Balancer:     &kafka.Murmur2Balancer{},
+		RequiredAcks: kafka.RequireAll,
+		// Synchronous: WriteMessages only returns after the brokers acked. With
+		// Async the call returned immediately, Publish could not fail, and the
+		// 202 the endpoint sends back was a guess -- a broker rejecting the
+		// write only showed up in this callback, long after the client left.
+		Async: false,
+		// The lab runs both clusters with auto.create.topics.enable=false on
+		// purpose, and the config-server provisions every topic explicitly. A
+		// typo in ORDER_INPUT_TOPIC has to fail loudly here, not quietly mint a
+		// topic with the broker defaults (RF=1) that nobody consumes.
+		AllowAutoTopicCreation: false,
 		Compression:            compress.Zstd,
 		Completion: func(messages []kafka.Message, err error) {
 			if err != nil {
@@ -102,11 +115,12 @@ func NewKafkaPublisher(config KafkaConfig) (*KafkaPublisher, error) {
 			}
 
 			for _, msg := range messages {
-				slog.Info(
-					"Kafka message sent",
+				slog.Debug(
+					"kafka message sent",
 					"topic", msg.Topic,
 					"partition", msg.Partition,
 					"offset", msg.Offset,
+					"key", string(msg.Key),
 				)
 			}
 		},

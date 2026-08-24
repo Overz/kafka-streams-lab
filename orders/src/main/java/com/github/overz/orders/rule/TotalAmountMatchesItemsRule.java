@@ -9,6 +9,8 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
+import static com.github.overz.orders.rule.ValidationReason.TOTAL_AMOUNT_MISMATCH;
+
 /**
  * A regra do documento: totalAmount tem de bater com a soma de quantity x unitPrice.
  * A conta e feita em BigDecimal pela classe Money -- em double a comparacao falharia de
@@ -33,8 +35,8 @@ public final class TotalAmountMatchesItemsRule implements OrderValidationRule {
       return Optional.empty();
     }
 
-    return Optional.of(new Violation("TOTAL_AMOUNT_MISMATCH",
-        "esperado=%s recebido=%s".formatted(expected, money.normalize(order.totalAmount()))));
+    return Optional.of(TOTAL_AMOUNT_MISMATCH.detailed(
+      "esperado=%s recebido=%s".formatted(expected, money.normalize(order.totalAmount()))));
   }
 
   private List<BigDecimal> subtotals(final List<OrderItem> items) {

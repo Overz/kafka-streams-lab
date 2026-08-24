@@ -20,18 +20,22 @@ include:
   # --- Configuracao ---------------------------------------------------------
   # Spring Cloud Config Server. As apps Streams rodam no host e consultam a 8888 no
   # boot; sem ele elas nao sobem. Nao pertence a cluster nenhum, fica nas duas redes.
-  - "infra/config-server/compose.yaml"
+  # E tambem quem cria os topicos, no proprio boot, a partir de resources/kafka/*.yaml.
+  - "config-server/compose.yaml"
 
   # --- Kafka ---------------------------------------------------------------
   # Cluster A -- dominio orders. 3 controllers + 3 brokers, rede cluster-a.
   - "infra/kafka/cluster-a.yaml"
   # Cluster B -- dominio antifraud. Mesma forma, rede cluster-b.
   - "infra/kafka/cluster-b.yaml"
-  # Job que cria os topicos dos dois clusters e sai.
-  - "infra/kafka/topics.yaml"
 
   # A unica ponte de dados entre os clusters: 2 instancias de MirrorMaker 2.
   - "infra/mirrormaker/compose.yaml"
+
+  # --- Entrada ---------------------------------------------------------------
+  # API HTTP em Go, o unico produtor de orders.created que nao e Kafka Streams.
+  # Roda no compose (nao tem topologia para reescrever) e so fala com o cluster A.
+  - "api/compose.yaml"
 
   # --- Estado agora --------------------------------------------------------
   # UI dos clusters, com login OAuth2 e MCP.

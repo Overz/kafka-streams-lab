@@ -19,8 +19,10 @@ import java.util.List;
 public final class CommaSeparatedListDeserializer extends JsonDeserializer<List<String>> {
 
   @Override
-  public List<String> deserialize(final JsonParser parser, final DeserializationContext context)
-      throws IOException {
+  public List<String> deserialize(
+    final JsonParser parser,
+    final DeserializationContext context
+  ) throws IOException {
 
     if (parser.currentToken() == JsonToken.START_ARRAY) {
       final var values = new ArrayList<String>();
@@ -36,8 +38,8 @@ public final class CommaSeparatedListDeserializer extends JsonDeserializer<List<
     }
 
     return Arrays.stream(raw.split(","))
-        .map(String::trim)
-        .filter(s -> !s.isEmpty())
-        .toList();
+      .map(String::trim)
+      .filter(s -> !s.isEmpty())
+      .toList();
   }
 }

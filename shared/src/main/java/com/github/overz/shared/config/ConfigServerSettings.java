@@ -15,6 +15,7 @@ import java.time.Duration;
 @Builder
 public record ConfigServerSettings(
     String baseUrl,
+    String prefix,
     String application,
     String profile,
     Duration requestTimeout,
@@ -22,15 +23,25 @@ public record ConfigServerSettings(
     Duration retryBackoff
 ) {
 
-  public static ConfigServerSettings fromEnvironment() {
-    return ConfigServerSettings.builder()
-        .application(required("APP_NAME"))
-        .baseUrl(optional("CONFIG_SERVER_URL", "http://localhost:8888"))
-        .profile(optional("CONFIG_PROFILE", "local"))
-        .requestTimeout(Duration.parse(optional("CONFIG_REQUEST_TIMEOUT", "PT5S")))
-        .maxAttempts(Integer.parseInt(optional("CONFIG_MAX_ATTEMPTS", "10")))
-        .retryBackoff(Duration.parse(optional("CONFIG_RETRY_BACKOFF", "PT2S")))
-        .build();
+  private static final class Holder {
+    private static final ConfigServerSettings INSTANCE = ConfigServerSettings.builder()
+      .application(required("APP_NAME"))
+      .baseUrl(optional("CONFIG_SERVER_URL", "http://localhost:8888"))
+      // Namespace do lab dentro do config-server (spring.cloud.config.server.prefix).
+      .prefix(optional("CONFIG_SERVER_PREFIX", "/lab"))
+      // Vazio de proposito: a consulta normal e /lab/{app}, e quem escolhe o profile e o
+      // servidor (lab.config.default-profile). Definir CONFIG_PROFILE volta a forma
+      // longa, /lab/{app}/{profile}, para apontar uma instancia a outro profile sem
+      // mexer no config-server.
+      .profile(optional("CONFIG_PROFILE", ""))
+      .requestTimeout(Duration.parse(optional("CONFIG_REQUEST_TIMEOUT", "PT5S")))
+      .maxAttempts(Integer.parseInt(optional("CONFIG_MAX_ATTEMPTS", "10")))
+      .retryBackoff(Duration.parse(optional("CONFIG_RETRY_BACKOFF", "PT2S")))
+      .build();
+  }
+
+  public static ConfigServerSettings shared() {
+    return Holder.INSTANCE;
   }
 
   private static String required(final String key) {
@@ -49,8 +60,26 @@ public record ConfigServerSettings(
     return value == null || value.isBlank() ? fallback : value;
   }
 
+  /**
+   * {@code /lab/orders} no caso normal, {@code /lab/orders/prod} quando ha profile.
+   *
+   * Sem profile quem resolve e o config-server, pelo atalho namespace + aplicacao que ele
+   * expoe; o Spring Cloud sozinho exigiria os tres segmentos.
+   */
   public String path() {
-    return "/%s/%s".formatted(application, profile);
+    final var base = "%s/%s".formatted(normalizedPrefix(), application);
+    return profile == null || profile.isBlank() ? base : base + "/" + profile;
+  }
+
+  // Tolera prefixo ausente, vazio ou sem a barra inicial: o servidor pode estar sem
+  // spring.cloud.config.server.prefix, e ai a URL volta a ser /{app}.
+  private String normalizedPrefix() {
+    if (prefix == null || prefix.isBlank() || "/".equals(prefix)) {
+      return "";
+    }
+
+    final var trimmed = prefix.endsWith("/") ? prefix.substring(0, prefix.length() - 1) : prefix;
+    return trimmed.startsWith("/") ? trimmed : "/" + trimmed;
   }
 
   public String uri() {

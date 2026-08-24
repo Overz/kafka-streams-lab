@@ -52,26 +52,28 @@ public final class DecisionPipeline implements Pipeline {
   @Override
   public void build(final StreamsBuilder builder) {
     log.info("montando pipeline de decisao, analise='{}', estado='{}', saidas=['{}', '{}']",
-        analysisInput, orderStateInput, approvedOutput, rejectedOutput);
+      analysisInput, orderStateInput, approvedOutput, rejectedOutput);
 
     final var orderState = builder.table(orderStateInput,
-        Consumed.with(keySerde, orderStateSerde).withName("order-state-source"),
-        Materialized.<String, OrderForFraudAnalysis, KeyValueStore<Bytes, byte[]>>as(stateStore)
-            .withKeySerde(keySerde)
-            .withValueSerde(orderStateSerde));
+      Consumed.with(keySerde, orderStateSerde).withName("order-state-source"),
+      Materialized.<String, OrderForFraudAnalysis, KeyValueStore<Bytes, byte[]>>as(stateStore)
+        .withKeySerde(keySerde)
+        .withValueSerde(orderStateSerde));
 
     builder.stream(analysisInput, Consumed.with(keySerde, analysisSerde).withName("decision-source"))
-        .join(orderState, decision,
-            Joined.with(keySerde, analysisSerde, orderStateSerde).withName("decision-join"))
-        .split(Named.as("decision-"))
-        .branch((key, decided) -> decided.decision() == Decision.APPROVED,
-            Branched.withConsumer(approved -> sink(approved, approvedOutput, "approved"), "approved"))
-        .defaultBranch(Branched.withConsumer(rejected -> sink(rejected, rejectedOutput, "rejected"), "rejected"));
+      .join(orderState, decision,
+        Joined.with(keySerde, analysisSerde, orderStateSerde).withName("decision-join"))
+      .split(Named.as("decision-"))
+      .branch(
+        (key, decided) -> decided.decision() == Decision.APPROVED,
+        Branched.withConsumer(approved -> sink(approved, approvedOutput, "approved"), "approved")
+      )
+      .defaultBranch(Branched.withConsumer(rejected -> sink(rejected, rejectedOutput, "rejected"), "rejected"));
   }
 
   private void sink(final KStream<String, OrderDecided> branch, final String topic, final String name) {
     branch
-        .processValues(HeaderCleanupProcessor.supplier(), Named.as(name + "-cleanup"))
-        .to(topic, Produced.with(keySerde, decidedSerde).withName(name + "-sink"));
+      .processValues(HeaderCleanupProcessor.supplier(), Named.as(name + "-cleanup"))
+      .to(topic, Produced.with(keySerde, decidedSerde).withName(name + "-sink"));
   }
 }

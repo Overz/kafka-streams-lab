@@ -8,6 +8,8 @@ import lombok.RequiredArgsConstructor;
 import java.util.List;
 import java.util.Optional;
 
+import static com.github.overz.orders.rule.ValidationReason.ITEM_UNIT_PRICE_MUST_BE_POSITIVE;
+
 @RequiredArgsConstructor
 public final class ItemUnitPriceRule implements OrderValidationRule {
 
@@ -18,7 +20,7 @@ public final class ItemUnitPriceRule implements OrderValidationRule {
     final var items = order.items() == null ? List.<OrderItem>of() : order.items();
 
     return items.stream().anyMatch(item -> !money.isPositive(item.unitPrice()))
-        ? Optional.of(Violation.of("ITEM_UNIT_PRICE_MUST_BE_POSITIVE"))
+        ? Optional.of(ITEM_UNIT_PRICE_MUST_BE_POSITIVE.violation())
         : Optional.empty();
   }
 }

@@ -1,0 +1,19 @@
+# Topicos do dominio antifraud -- cluster B.
+#
+# Mesmas regras do orders.yaml ao lado: so cria, ignora o que ja existe, e nao declara os
+# topicos replicados (cluster-a.orders.fraud-requested e do MirrorMaker 2).
+bootstrap-servers: "kafka-broker-b-1:9092,kafka-broker-b-2:9092,kafka-broker-b-3:9092"
+
+defaults:
+  partitions: 3
+  replication-factor: 3
+  configs:
+    min.insync.replicas: "2"
+
+topics:
+  - name: "antifraud.analysis-completed"
+
+  - name: "antifraud.dlq"
+    configs:
+      retention.ms: "2592000000"
+      retention.bytes: "1073741824"

@@ -53,7 +53,7 @@ func Load() (Config, error) {
 			WriteTimeout: l.duration("KAFKA_WRITE_TIMEOUT", 10*time.Second),
 			Topics: struct{ Order KafkaTopicSpecs }{
 				Order: KafkaTopicSpecs{
-					Topic: l.str("ORDER_INPUT_TOPIC", "order.created"),
+					Topic: l.str("ORDER_INPUT_TOPIC", "orders.created"),
 				},
 			},
 		},

@@ -61,15 +61,15 @@ public final class StreamsMetricsBridge implements StateTransitionObserver, Auto
     }
 
     log.info("metricas do kafka streams publicadas no opentelemetry, instrumentos={}, novos={}, ignoradas={}",
-        gauges.size(), gauges.size() - antes, ignoradas);
+      gauges.size(), gauges.size() - antes, ignoradas);
   }
 
   private ObservableDoubleGauge create(final String instrument, final MetricName name) {
     return meter.gaugeBuilder(instrument)
-        .setDescription(name.description())
-        // O valor e lido na coleta, nao agora: um gauge que guardasse o valor do registro
-        // reportaria para sempre o numero do instante do boot.
-        .buildWithCallback(measurement -> observe(name.group(), name.name(), measurement));
+      .setDescription(name.description())
+      // O valor e lido na coleta, nao agora: um gauge que guardasse o valor do registro
+      // reportaria para sempre o numero do instante do boot.
+      .buildWithCallback(measurement -> observe(name.group(), name.name(), measurement));
   }
 
   /**
@@ -98,8 +98,8 @@ public final class StreamsMetricsBridge implements StateTransitionObserver, Auto
    */
   private static String instrumentOf(final MetricName name) {
     final var group = name.group().endsWith(GROUP_SUFFIX)
-        ? name.group().substring(0, name.group().length() - GROUP_SUFFIX.length())
-        : name.group();
+      ? name.group().substring(0, name.group().length() - GROUP_SUFFIX.length())
+      : name.group();
 
     return PREFIX + group + "." + name.name();
   }

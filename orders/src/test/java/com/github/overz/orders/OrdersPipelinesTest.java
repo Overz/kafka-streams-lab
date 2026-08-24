@@ -6,23 +6,8 @@ import com.github.overz.orders.pipeline.DecisionPipeline;
 import com.github.overz.orders.pipeline.FraudRequestPipeline;
 import com.github.overz.orders.pipeline.ValidationPipeline;
 import com.github.overz.orders.rule.OrderValidationRules;
-import com.github.overz.orders.stage.CompletionProcessor;
-import com.github.overz.orders.stage.DeadLetterProcessor;
-import com.github.overz.orders.stage.DecisionJoiner;
-import com.github.overz.orders.stage.FraudRequestProcessor;
-import com.github.overz.orders.stage.ValidationProcessor;
-import com.github.overz.shared.event.DeadLetter;
-import com.github.overz.shared.event.Decision;
-import com.github.overz.shared.event.FraudAnalysisCompleted;
-import com.github.overz.shared.event.FraudReason;
-import com.github.overz.shared.event.Money;
-import com.github.overz.shared.event.OrderCreated;
-import com.github.overz.shared.event.OrderDecided;
-import com.github.overz.shared.event.OrderForFraudAnalysis;
-import com.github.overz.shared.event.OrderItem;
-import com.github.overz.shared.event.OrderProcessed;
-import com.github.overz.shared.event.OrderValidated;
-import com.github.overz.shared.serde.JsonSerdes;
+import com.github.overz.orders.stage.*;
+import com.github.overz.shared.event.*;
 import com.github.overz.shared.streams.EventHeaders;
 import com.github.overz.shared.streams.Pipeline;
 import com.github.overz.shared.streams.PipelineTopology;
@@ -32,7 +17,6 @@ import io.opentelemetry.api.OpenTelemetry;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.header.internals.RecordHeader;
 import org.apache.kafka.common.header.internals.RecordHeaders;
-import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.TestInputTopic;
 import org.apache.kafka.streams.TestOutputTopic;
 import org.apache.kafka.streams.TopologyTestDriver;
@@ -40,21 +24,16 @@ import org.apache.kafka.streams.processor.api.ContextualProcessor;
 import org.apache.kafka.streams.processor.api.ProcessorSupplier;
 import org.apache.kafka.streams.processor.api.Record;
 import org.apache.kafka.streams.test.TestRecord;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 
+import static com.github.overz.orders.OrdersSerdes.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("Pipelines do dominio orders")
@@ -64,24 +43,22 @@ class OrdersPipelinesTest {
   private static final Instant CRIADO_EM = Instant.parse("2026-08-07T18:30:00Z");
 
   private static final OrdersTopics TOPICOS = OrdersTopics.builder()
-      .orderCreated("orders.created")
-      .analysisCompleted("cluster-b.antifraud.analysis-completed")
-      .orderValidated("orders.validated")
-      .fraudRequested("orders.fraud-requested")
-      .orderApproved("orders.approved")
-      .orderRejected("orders.rejected")
-      .orderProcessed("orders.processed")
-      .deadLetter("orders.dlq")
-      .build();
+    .orderCreated("orders.created")
+    .analysisCompleted("cluster-b.antifraud.analysis-completed")
+    .orderValidated("orders.validated")
+    .fraudRequested("orders.fraud-requested")
+    .orderApproved("orders.approved")
+    .orderRejected("orders.rejected")
+    .orderProcessed("orders.processed")
+    .deadLetter("orders.dlq")
+    .build();
 
   private static final OrdersStores STORES = OrdersStores.builder()
-      .orderState("orders-order-state-store")
-      .build();
+    .orderState("orders-order-state-store")
+    .build();
 
-  private final JsonSerdes serdes = new JsonSerdes();
   private final Money money = Money.brl();
-  private final Clock clock = Clock.fixed(AGORA, ZoneOffset.UTC);
-  private final Telemetry telemetry = new Telemetry("orders-test", OpenTelemetry.noop());
+  private final Telemetry telemetry = new Telemetry("orders-test", OpenTelemetry.noop().getTracer("orders-test"));
   private final OrdersMapperImpl mapper = new OrdersMapperImpl();
 
   private TopologyTestDriver driver;
@@ -99,56 +76,54 @@ class OrdersPipelinesTest {
   private TestOutputTopic<String, DeadLetter> dlq;
 
   private ProcessorSupplier<String, OrderCreated, String, StageOutcome<OrderValidated>> validacaoPadrao() {
-    return () -> new ValidationProcessor(
-        OrderValidationRules.standard(money), mapper,
-        serdes.of(OrderCreated.class).serializer(), clock, telemetry);
+    return new ValidationProcessor(
+      OrderValidationRules.standard(money), mapper,
+      ORDER_CREATED_JSON_SERDES.serializer(), telemetry);
   }
 
   private List<Pipeline> pipelines(
-      final ProcessorSupplier<String, OrderCreated, String, StageOutcome<OrderValidated>> validacao) {
-
-    final var key = Serdes.String();
+    final ProcessorSupplier<String, OrderCreated, String, StageOutcome<OrderValidated>> validacao) {
 
     return List.of(
-        ValidationPipeline.builder()
-            .input(TOPICOS.orderCreated())
-            .validOutput(TOPICOS.orderValidated())
-            .deadLetterOutput(TOPICOS.deadLetter())
-            .keySerde(key)
-            .inputSerde(serdes.of(OrderCreated.class))
-            .validSerde(serdes.of(OrderValidated.class))
-            .deadLetterSerde(serdes.of(DeadLetter.class))
-            .validation(validacao)
-            .deadLetter(() -> new DeadLetterProcessor(clock, 4096))
-            .build(),
-        FraudRequestPipeline.builder()
-            .input(TOPICOS.orderValidated())
-            .output(TOPICOS.fraudRequested())
-            .keySerde(key)
-            .inputSerde(serdes.of(OrderValidated.class))
-            .outputSerde(serdes.of(OrderForFraudAnalysis.class))
-            .projection(() -> new FraudRequestProcessor(mapper, telemetry))
-            .build(),
-        DecisionPipeline.builder()
-            .analysisInput(TOPICOS.analysisCompleted())
-            .orderStateInput(TOPICOS.fraudRequested())
-            .stateStore(STORES.orderState())
-            .approvedOutput(TOPICOS.orderApproved())
-            .rejectedOutput(TOPICOS.orderRejected())
-            .keySerde(key)
-            .analysisSerde(serdes.of(FraudAnalysisCompleted.class))
-            .orderStateSerde(serdes.of(OrderForFraudAnalysis.class))
-            .decidedSerde(serdes.of(OrderDecided.class))
-            .decision(new DecisionJoiner(mapper, clock, telemetry))
-            .build(),
-        CompletionPipeline.builder()
-            .inputs(List.of(TOPICOS.orderApproved(), TOPICOS.orderRejected()))
-            .output(TOPICOS.orderProcessed())
-            .keySerde(key)
-            .inputSerde(serdes.of(OrderDecided.class))
-            .outputSerde(serdes.of(OrderProcessed.class))
-            .completion(() -> new CompletionProcessor(mapper, clock))
-            .build());
+      ValidationPipeline.builder()
+        .input(TOPICOS.orderCreated())
+        .validOutput(TOPICOS.orderValidated())
+        .deadLetterOutput(TOPICOS.deadLetter())
+        .keySerde(STRING_SERDES)
+        .inputSerde(ORDER_CREATED_JSON_SERDES)
+        .validSerde(ORDER_VALIDATED_JSON_SERDES)
+        .deadLetterSerde(DEAD_LETTER_JSON_SERDES)
+        .validation(validacao)
+        .deadLetter(new DeadLetterProcessor(4096))
+        .build(),
+      FraudRequestPipeline.builder()
+        .input(TOPICOS.orderValidated())
+        .output(TOPICOS.fraudRequested())
+        .keySerde(STRING_SERDES)
+        .inputSerde(ORDER_VALIDATED_JSON_SERDES)
+        .outputSerde(ORDER_FOR_FRAUD_ANALYSIS_JSON_SERDES)
+        .projection(new FraudRequestProcessor(mapper, telemetry))
+        .build(),
+      DecisionPipeline.builder()
+        .analysisInput(TOPICOS.analysisCompleted())
+        .orderStateInput(TOPICOS.fraudRequested())
+        .stateStore(STORES.orderState())
+        .approvedOutput(TOPICOS.orderApproved())
+        .rejectedOutput(TOPICOS.orderRejected())
+        .keySerde(STRING_SERDES)
+        .analysisSerde(FRAUD_ANALYSIS_COMPLETED_JSON_SERDES)
+        .orderStateSerde(ORDER_FOR_FRAUD_ANALYSIS_JSON_SERDES)
+        .decidedSerde(ORDER_DECIDED_JSON_SERDES)
+        .decision(new DecisionJoiner(mapper, telemetry))
+        .build(),
+      CompletionPipeline.builder()
+        .inputs(List.of(TOPICOS.orderApproved(), TOPICOS.orderRejected()))
+        .output(TOPICOS.orderProcessed())
+        .keySerde(STRING_SERDES)
+        .inputSerde(ORDER_DECIDED_JSON_SERDES)
+        .outputSerde(ORDER_PROCESSED_JSON_SERDES)
+        .completion(new CompletionProcessor(mapper))
+        .build());
   }
 
   private void montar(final ProcessorSupplier<String, OrderCreated, String, StageOutcome<OrderValidated>> validacao) {
@@ -159,26 +134,26 @@ class OrdersPipelinesTest {
     driver = new TopologyTestDriver(new PipelineTopology(pipelines(validacao)).topology(), props);
 
     criados = driver.createInputTopic(TOPICOS.orderCreated(),
-        Serdes.String().serializer(), serdes.of(OrderCreated.class).serializer());
+      STRING_SERDES.serializer(), ORDER_CREATED_JSON_SERDES.serializer());
     validadosEntrada = driver.createInputTopic(TOPICOS.orderValidated(),
-        Serdes.String().serializer(), serdes.of(OrderValidated.class).serializer());
+      STRING_SERDES.serializer(), ORDER_VALIDATED_JSON_SERDES.serializer());
     analises = driver.createInputTopic(TOPICOS.analysisCompleted(),
-        Serdes.String().serializer(), serdes.of(FraudAnalysisCompleted.class).serializer());
+      STRING_SERDES.serializer(), FRAUD_ANALYSIS_COMPLETED_JSON_SERDES.serializer());
     decididosEntrada = driver.createInputTopic(TOPICOS.orderApproved(),
-        Serdes.String().serializer(), serdes.of(OrderDecided.class).serializer());
+      STRING_SERDES.serializer(), ORDER_DECIDED_JSON_SERDES.serializer());
 
     validados = driver.createOutputTopic(TOPICOS.orderValidated(),
-        Serdes.String().deserializer(), serdes.of(OrderValidated.class).deserializer());
+      STRING_SERDES.deserializer(), ORDER_VALIDATED_JSON_SERDES.deserializer());
     paraAnalise = driver.createOutputTopic(TOPICOS.fraudRequested(),
-        Serdes.String().deserializer(), serdes.of(OrderForFraudAnalysis.class).deserializer());
+      STRING_SERDES.deserializer(), ORDER_FOR_FRAUD_ANALYSIS_JSON_SERDES.deserializer());
     aprovados = driver.createOutputTopic(TOPICOS.orderApproved(),
-        Serdes.String().deserializer(), serdes.of(OrderDecided.class).deserializer());
+      STRING_SERDES.deserializer(), ORDER_DECIDED_JSON_SERDES.deserializer());
     rejeitados = driver.createOutputTopic(TOPICOS.orderRejected(),
-        Serdes.String().deserializer(), serdes.of(OrderDecided.class).deserializer());
+      STRING_SERDES.deserializer(), ORDER_DECIDED_JSON_SERDES.deserializer());
     processados = driver.createOutputTopic(TOPICOS.orderProcessed(),
-        Serdes.String().deserializer(), serdes.of(OrderProcessed.class).deserializer());
+      STRING_SERDES.deserializer(), ORDER_PROCESSED_JSON_SERDES.deserializer());
     dlq = driver.createOutputTopic(TOPICOS.deadLetter(),
-        Serdes.String().deserializer(), serdes.of(DeadLetter.class).deserializer());
+      STRING_SERDES.deserializer(), DEAD_LETTER_JSON_SERDES.deserializer());
   }
 
   @BeforeEach
@@ -193,23 +168,23 @@ class OrdersPipelinesTest {
 
   private static OrderCreated.OrderCreatedBuilder pedido() {
     return OrderCreated.builder()
-        .orderId("ord-001")
-        .customerId("cus-001")
-        .items(List.of(new OrderItem("prod-001", 2, new BigDecimal("150.00"))))
-        .totalAmount(new BigDecimal("300.00"))
-        .currency("BRL")
-        .createdAt(CRIADO_EM);
+      .orderId("ord-001")
+      .customerId("cus-001")
+      .items(List.of(new OrderItem("prod-001", 2, new BigDecimal("150.00"))))
+      .totalAmount(new BigDecimal("300.00"))
+      .currency("BRL")
+      .createdAt(CRIADO_EM);
   }
 
   private static FraudAnalysisCompleted analise(final Decision decisao, final int score) {
     return FraudAnalysisCompleted.builder()
-        .orderId("ord-001")
-        .customerId("cus-001")
-        .decision(decisao)
-        .riskScore(score)
-        .reasons(decisao == Decision.REJECTED ? List.of(FraudReason.HIGH_ORDER_AMOUNT) : List.of())
-        .analyzedAt(Instant.parse("2026-08-07T18:30:02Z"))
-        .build();
+      .orderId("ord-001")
+      .customerId("cus-001")
+      .decision(decisao)
+      .riskScore(score)
+      .reasons(decisao == Decision.REJECTED ? List.of(FraudReason.HIGH_ORDER_AMOUNT) : List.of())
+      .analyzedAt(Instant.parse("2026-08-07T18:30:02Z"))
+      .build();
   }
 
   // Nenhum helper de encadeamento: quando um topico e sink de uma pipeline e source de
@@ -223,12 +198,15 @@ class OrdersPipelinesTest {
     @Test
     @DisplayName("Quando o pedido e valido, Entao sai em orders.validated com o createdAt original")
     void valido() {
+      final var antes = Instant.now();
+
       criados.pipeInput("ord-001", pedido().build());
 
       assertThat(validados.readValue()).satisfies(v -> {
         assertThat(v.orderId()).isEqualTo("ord-001");
         assertThat(v.createdAt()).isEqualTo(CRIADO_EM);
-        assertThat(v.validatedAt()).isEqualTo(AGORA);
+        // Clocks.now() e o relogio do sistema: da para cravar a janela, nao o instante.
+        assertThat(v.validatedAt()).isBetween(antes, Instant.now());
       });
       assertThat(dlq.isEmpty()).isTrue();
     }
@@ -237,7 +215,7 @@ class OrdersPipelinesTest {
     @DisplayName("Quando o total diverge, Entao vai so para a dead letter queue")
     void totalDivergente() {
       criados.pipeInput("ord-002", pedido().orderId("ord-002")
-          .totalAmount(new BigDecimal("999.00")).build());
+        .totalAmount(new BigDecimal("999.00")).build());
 
       final var registro = dlq.readRecord();
 
@@ -254,15 +232,15 @@ class OrdersPipelinesTest {
       criados.pipeInput("ord-003", pedido().orderId(null).currency(null).build());
 
       assertThat(dlq.readValue().reason())
-          .contains("ORDER_ID_REQUIRED")
-          .contains("CURRENCY_REQUIRED");
+        .contains("ORDER_ID_REQUIRED")
+        .contains("CURRENCY_REQUIRED");
     }
 
     @Test
     @DisplayName("Quando vai para a DLQ, Entao os headers de erro estao presentes e limpos")
     void headersDeErro() {
       criados.pipeInput("ord-004", pedido().orderId("ord-004")
-          .totalAmount(new BigDecimal("1.00")).build());
+        .totalAmount(new BigDecimal("1.00")).build());
 
       final var headers = dlq.readRecord().headers();
 
@@ -281,9 +259,9 @@ class OrdersPipelinesTest {
     @DisplayName("Quando le orders.validated, Entao publica o contrato do antifraude")
     void publicaContrato() {
       validadosEntrada.pipeInput("ord-001", OrderValidated.builder()
-          .orderId("ord-001").customerId("cus-001")
-          .totalAmount(new BigDecimal("300.00")).currency("BRL")
-          .createdAt(CRIADO_EM).validatedAt(AGORA).build());
+        .orderId("ord-001").customerId("cus-001")
+        .totalAmount(new BigDecimal("300.00")).currency("BRL")
+        .createdAt(CRIADO_EM).validatedAt(AGORA).build());
 
       assertThat(paraAnalise.readValue()).satisfies(r -> {
         assertThat(r.orderId()).isEqualTo("ord-001");
@@ -339,7 +317,7 @@ class OrdersPipelinesTest {
     @DisplayName("Quando o pedido nao esta no estado, Entao nada e publicado")
     void decisaoOrfa() {
       analises.pipeInput("ord-desconhecido",
-          analise(Decision.APPROVED, 0).withOrderId("ord-desconhecido"));
+        analise(Decision.APPROVED, 0).withOrderId("ord-desconhecido"));
 
       assertThat(aprovados.isEmpty()).isTrue();
       assertThat(rejeitados.isEmpty()).isTrue();
@@ -350,7 +328,7 @@ class OrdersPipelinesTest {
     void estadoMaisRecente() {
       criados.pipeInput("ord-001", pedido().build());
       criados.pipeInput("ord-001", pedido().totalAmount(new BigDecimal("450.00"))
-          .items(List.of(new OrderItem("prod-001", 3, new BigDecimal("150.00")))).build());
+        .items(List.of(new OrderItem("prod-001", 3, new BigDecimal("150.00")))).build());
 
       analises.pipeInput("ord-001", analise(Decision.APPROVED, 0));
 
@@ -365,15 +343,17 @@ class OrdersPipelinesTest {
     @Test
     @DisplayName("Quando le orders.approved, Entao publica OrderProcessed")
     void aprovadoVira() {
+      final var antes = Instant.now();
+
       decididosEntrada.pipeInput("ord-001", OrderDecided.builder()
-          .orderId("ord-001").customerId("cus-001")
-          .decision(Decision.APPROVED).riskScore(12).reasons(List.of())
-          .totalAmount(new BigDecimal("300.00")).currency("BRL")
-          .decidedAt(AGORA).build());
+        .orderId("ord-001").customerId("cus-001")
+        .decision(Decision.APPROVED).riskScore(12).reasons(List.of())
+        .totalAmount(new BigDecimal("300.00")).currency("BRL")
+        .decidedAt(AGORA).build());
 
       assertThat(processados.readValue()).satisfies(p -> {
         assertThat(p.decision()).isEqualTo(Decision.APPROVED);
-        assertThat(p.processedAt()).isEqualTo(AGORA);
+        assertThat(p.processedAt()).isBetween(antes, Instant.now());
       });
     }
 
@@ -395,27 +375,27 @@ class OrdersPipelinesTest {
     @DisplayName("Quando percorre as pipelines, Entao nenhuma saida carrega x-internal-")
     void saidasLimpas() {
       criados.pipeInput(new TestRecord<>("ord-001", pedido().build(), new RecordHeaders()
-          .add(header(EventHeaders.REQUEST_ID, "req-42"))
-          .add(header(EventHeaders.TRACEPARENT, "00-abc-def-01"))));
+        .add(header(EventHeaders.REQUEST_ID, "req-42"))
+        .add(header(EventHeaders.TRACEPARENT, "00-abc-def-01"))));
 
       analises.pipeInput("ord-001", analise(Decision.APPROVED, 0));
 
       assertThat(validados.readRecord().headers())
-          .noneMatch(h -> h.key().startsWith(EventHeaders.INTERNAL_PREFIX));
+        .noneMatch(h -> h.key().startsWith(EventHeaders.INTERNAL_PREFIX));
       assertThat(paraAnalise.readRecord().headers())
-          .noneMatch(h -> h.key().startsWith(EventHeaders.INTERNAL_PREFIX));
+        .noneMatch(h -> h.key().startsWith(EventHeaders.INTERNAL_PREFIX));
       assertThat(aprovados.readRecord().headers())
-          .noneMatch(h -> h.key().startsWith(EventHeaders.INTERNAL_PREFIX));
+        .noneMatch(h -> h.key().startsWith(EventHeaders.INTERNAL_PREFIX));
       assertThat(processados.readRecord().headers())
-          .noneMatch(h -> h.key().startsWith(EventHeaders.INTERNAL_PREFIX));
+        .noneMatch(h -> h.key().startsWith(EventHeaders.INTERNAL_PREFIX));
     }
 
     @Test
     @DisplayName("Quando o pedido traz rastreio, Entao ele sobrevive ate a saida")
     void rastreioSobrevive() {
       criados.pipeInput(new TestRecord<>("ord-001", pedido().build(), new RecordHeaders()
-          .add(header(EventHeaders.REQUEST_ID, "req-42"))
-          .add(header(EventHeaders.TRACEPARENT, "00-abc-def-01"))));
+        .add(header(EventHeaders.REQUEST_ID, "req-42"))
+        .add(header(EventHeaders.TRACEPARENT, "00-abc-def-01"))));
 
       final var validado = validados.readRecord();
 
@@ -437,7 +417,7 @@ class OrdersPipelinesTest {
         @Override
         public void process(final Record<String, OrderCreated> record) {
           context().forward(record.withValue(StageOutcome.failure(
-              "SEMPRE_REJEITA", "validation", "etapa de teste")));
+            "SEMPRE_REJEITA", "validation", "etapa de teste")));
         }
       });
 
@@ -454,7 +434,7 @@ class OrdersPipelinesTest {
 
   private static String valor(final Headers headers, final String key) {
     return Optional.ofNullable(headers.lastHeader(key))
-        .map(h -> new String(h.value(), StandardCharsets.UTF_8))
-        .orElse(null);
+      .map(h -> new String(h.value(), StandardCharsets.UTF_8))
+      .orElse(null);
   }
 }

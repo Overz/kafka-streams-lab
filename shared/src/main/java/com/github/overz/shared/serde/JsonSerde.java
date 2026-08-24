@@ -23,7 +23,7 @@ public final class JsonSerde<T> implements Serde<T> {
         return mapper.writeValueAsBytes(data);
       } catch (final Exception e) {
         throw new SerializationException(
-            "falha ao serializar %s para o topico '%s'".formatted(type.getSimpleName(), topic), e);
+          "falha ao serializar %s para o topico '%s'".formatted(type.getSimpleName(), topic), e);
       }
     };
   }
@@ -38,7 +38,7 @@ public final class JsonSerde<T> implements Serde<T> {
         return mapper.readValue(data, type);
       } catch (final Exception e) {
         throw new SerializationException(
-            "falha ao desserializar %s do topico '%s'".formatted(type.getSimpleName(), topic), e);
+          "falha ao desserializar %s do topico '%s'".formatted(type.getSimpleName(), topic), e);
       }
     };
   }

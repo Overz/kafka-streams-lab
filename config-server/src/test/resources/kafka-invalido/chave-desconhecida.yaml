@@ -1,0 +1,6 @@
+# Fixture: "retention-ms" no nivel do topico em vez de dentro de configs. Sem
+# FAIL_ON_UNKNOWN_PROPERTIES isto passaria calado e o topico nasceria sem a retencao.
+bootstrap-servers: "kafka-broker-a-1:9092"
+topics:
+  - name: "orders.created"
+    retention-ms: "60000"

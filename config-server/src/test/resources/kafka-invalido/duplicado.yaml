@@ -1,0 +1,6 @@
+# Fixture: o mesmo topico duas vezes -- o segundo bloco venceria em silencio.
+bootstrap-servers: "kafka-broker-a-1:9092"
+topics:
+  - name: "orders.created"
+  - name: "orders.created"
+    partitions: 6

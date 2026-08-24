@@ -1,0 +1,220 @@
+### POST /api/orders -- pedido valido, percorre o pipeline inteiro
+# O corpo e o contrato com.github.overz.shared.event.OrderCreated, campo por campo.
+# totalAmount tem de bater com a soma de quantity * unitPrice na escala 2, senao
+# TotalAmountMatchesItemsRule rejeita: 2 x 150.00 = 300.00.
+#
+#   orders.created -> orders.validated -> orders.fraud-requested
+#     -> (MM2) -> antifraud -> (MM2) -> orders.approved|rejected -> orders.processed
+POST {{api}}/api/orders
+Content-Type: application/json
+
+{
+  "orderId": "ord-001",
+  "customerId": "cus-001",
+  "items": [
+    {
+      "productId": "prod-001",
+      "quantity": 2,
+      "unitPrice": 150.00
+    }
+  ],
+  "totalAmount": 300.00,
+  "currency": "BRL",
+  "createdAt": "2026-08-24T12:00:00Z"
+}
+
+> {%
+  client.test("aceito", function () {
+    client.assert(response.status === 202, "esperado 202, veio " + response.status);
+  });
+  client.global.set("ultimoPedido", response.body.orderId);
+%}
+
+### POST /api/orders -- sem createdAt, a API carimba a hora de entrada
+# createdAt e opcional no request. Quando falta, o gateway preenche com time.Now().UTC()
+# antes de publicar: "quando isto foi criado" nao e algo que a app Streams recupere depois.
+POST {{api}}/api/orders
+Content-Type: application/json
+
+{
+  "orderId": "ord-002",
+  "customerId": "cus-001",
+  "items": [
+    {
+      "productId": "prod-001",
+      "quantity": 1,
+      "unitPrice": 99.90
+    }
+  ],
+  "totalAmount": 99.90,
+  "currency": "BRL"
+}
+
+### POST /api/orders -- valor alto, o antifraude reprova
+# Acima de rules.high-amount.threshold (2000.00) no antifraud.yaml. Sai em orders.rejected
+# e chega em orders.processed com decision=REJECTED.
+POST {{api}}/api/orders
+Content-Type: application/json
+
+{
+  "orderId": "ord-003",
+  "customerId": "cus-002",
+  "items": [
+    {
+      "productId": "prod-009",
+      "quantity": 5,
+      "unitPrice": 900.00
+    }
+  ],
+  "totalAmount": 4500.00,
+  "currency": "BRL",
+  "createdAt": "2026-08-24T12:05:00Z"
+}
+
+### POST /api/orders -- total divergente, vai para a DLQ
+# 2 x 150.00 = 300.00, mas o pedido declara 999.00. A API aceita (202) e publica: quem
+# rejeita e ValidationPipeline, com TOTAL_AMOUNT_MISMATCH em orders.dlq. Validar isto no
+# gateway esconderia justamente o caminho que o lab existe para mostrar.
+POST {{api}}/api/orders
+Content-Type: application/json
+
+{
+  "orderId": "ord-004",
+  "customerId": "cus-001",
+  "items": [
+    {
+      "productId": "prod-001",
+      "quantity": 2,
+      "unitPrice": 150.00
+    }
+  ],
+  "totalAmount": 999.00,
+  "currency": "BRL",
+  "createdAt": "2026-08-24T12:10:00Z"
+}
+
+> {%
+  client.test("aceito mesmo invalido", function () {
+    client.assert(response.status === 202, "esperado 202, veio " + response.status);
+  });
+%}
+
+### POST /api/orders -- campos obrigatorios faltando, DLQ com varios motivos
+# Sem customerId, sem currency, sem items e sem totalAmount. Cai em orders.dlq com
+# CUSTOMER_ID_REQUIRED, CURRENCY_REQUIRED, ITEMS_REQUIRED e TOTAL_AMOUNT_MUST_BE_POSITIVE
+# -- todas as regras rodam, nao so a primeira.
+POST {{api}}/api/orders
+Content-Type: application/json
+
+{
+  "orderId": "ord-005"
+}
+
+### POST /api/orders -- sem orderId, recusado pelo gateway
+# O unico campo que a API valida. orderId e a chave de particao: vazio, ele espalharia um
+# mesmo pedido entre particoes e perderia a ordenacao. Isso a DLQ nao explicaria, entao
+# para aqui com 400.
+POST {{api}}/api/orders
+Content-Type: application/json
+
+{
+  "customerId": "cus-001",
+  "currency": "BRL"
+}
+
+> {%
+  client.test("recusado", function () {
+    client.assert(response.status === 400, "esperado 400, veio " + response.status);
+  });
+  client.test("diz o que falta", function () {
+    client.assert(response.body.error === "orderId is required", "mensagem inesperada");
+  });
+%}
+
+### POST /api/orders -- JSON malformado
+POST {{api}}/api/orders
+Content-Type: application/json
+
+{
+  "orderId": "ord-006",
+
+> {%
+  client.test("recusado", function () {
+    client.assert(response.status === 400, "esperado 400, veio " + response.status);
+  });
+%}
+
+### POST /api/orders -- rajada do mesmo cliente, dispara a regra de burst
+# rules.burst no antifraud.yaml: mais de 3 pedidos em 1 minuto. Dispare os quatro em
+# sequencia; do quarto em diante o score acumula 40 pontos por esta regra.
+# Todos usam o mesmo customerId de proposito -- a janela e por cliente.
+POST {{api}}/api/orders
+Content-Type: application/json
+
+{
+  "orderId": "ord-burst-1",
+  "customerId": "cus-burst",
+  "items": [
+    {
+      "productId": "prod-001",
+      "quantity": 1,
+      "unitPrice": 10.00
+    }
+  ],
+  "totalAmount": 10.00,
+  "currency": "BRL"
+}
+
+###
+POST {{api}}/api/orders
+Content-Type: application/json
+
+{
+  "orderId": "ord-burst-2",
+  "customerId": "cus-burst",
+  "items": [
+    {
+      "productId": "prod-001",
+      "quantity": 1,
+      "unitPrice": 10.00
+    }
+  ],
+  "totalAmount": 10.00,
+  "currency": "BRL"
+}
+
+###
+POST {{api}}/api/orders
+Content-Type: application/json
+
+{
+  "orderId": "ord-burst-3",
+  "customerId": "cus-burst",
+  "items": [
+    {
+      "productId": "prod-001",
+      "quantity": 1,
+      "unitPrice": 10.00
+    }
+  ],
+  "totalAmount": 10.00,
+  "currency": "BRL"
+}
+
+###
+POST {{api}}/api/orders
+Content-Type: application/json
+
+{
+  "orderId": "ord-burst-4",
+  "customerId": "cus-burst",
+  "items": [
+    {
+      "productId": "prod-001",
+      "quantity": 1,
+      "unitPrice": 10.00
+    }
+  ],
+  "totalAmount": 10.00,
+  "currency": "BRL"
+}

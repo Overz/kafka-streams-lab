@@ -7,12 +7,12 @@ import java.util.Map;
 
 /**
  * Converte as propriedades pontuadas do config-server na arvore que o Jackson espera.
- *
+ * <p>
  * O servidor devolve uma lista de propertySources, da mais especifica para a menos
  * (orders.yaml antes de application.yaml), cada uma com chaves achatadas:
- *
- *   {"kafka.bootstrap-servers": "a,b,c", "topics.order-created": "orders.created"}
- *
+ * <p>
+ * {"kafka.bootstrap-servers": "a,b,c", "topics.order-created": "orders.created"}
+ * <p>
  * Nao da para pedir a versao ja aninhada (/{app}-{profile}.json): aquele endpoint entrega
  * as fontes ja fundidas e tira do cliente a chance de aplicar a precedencia -- que e
  * justamente o que o config-server tem de util.
@@ -22,7 +22,9 @@ final class ConfigTree {
   private ConfigTree() {
   }
 
-  /** A primeira fonte que define uma chave vence: a lista ja vem em ordem de precedencia. */
+  /**
+   * A primeira fonte que define uma chave vence: a lista ja vem em ordem de precedencia.
+   */
   static Map<String, Object> flatten(final List<Map<String, Object>> sources) {
     final var flat = new LinkedHashMap<String, Object>();
     for (final var source : sources) {
@@ -60,7 +62,9 @@ final class ConfigTree {
     return root;
   }
 
-  /** Reconstroi a chave original a partir do caminho percorrido no record. */
+  /**
+   * Reconstroi a chave original a partir do caminho percorrido no record.
+   */
   static String toPropertyKey(final List<String> camelCasePath) {
     final var segments = new ArrayList<String>(camelCasePath.size());
     for (final var segment : camelCasePath) {

@@ -11,13 +11,21 @@ IMAGE   ?= kafka-streams-lab/kafka:4.1.1
 CLUSTER ?= a
 N       ?= 1
 
+# Alvo config. Variaveis proprias, e nao N: N e o ordinal de broker/controller/mirror e
+# nunca fica vazio, entao um fallback com $(or $(N),...) jamais dispararia.
+APP     ?= orders
+PROFILE ?=
+
+# Servico do compose para o alvo build. Vazio constroi todas as imagens.
+SERVICE ?=
+
 # Servicos de um cluster inteiro, para os alvos kill-cluster/start-cluster.
 CLUSTER_SERVICES = kafka-controller-$(CLUSTER)-1 kafka-controller-$(CLUSTER)-2 kafka-controller-$(CLUSTER)-3 \
                    kafka-broker-$(CLUSTER)-1 kafka-broker-$(CLUSTER)-2 kafka-broker-$(CLUSTER)-3
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build up down clean topics ps logs \
+.PHONY: help build build-api build-config-server up down clean topics ps logs \
         apps-build orders antifraud apps-up e2e config \
         kill-broker start-broker kill-controller start-controller \
         kill-cluster start-cluster kill-mirror start-mirror \
@@ -27,8 +35,16 @@ CLUSTER_SERVICES = kafka-controller-$(CLUSTER)-1 kafka-controller-$(CLUSTER)-2 k
 help: ## Lista os alvos
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-build: ## Constroi as imagens do lab (Kafka com javaagent, Flink com conector Kafka)
-	$(COMPOSE) build
+# As imagens que o lab constroi: Kafka com javaagent, Flink com conector Kafka, o
+# config-server e a API. O resto vem pronto do registry.
+build: ## Constroi todas as imagens do lab; uma so: make build SERVICE=api
+	$(COMPOSE) build $(SERVICE)
+
+build-api: ## Constroi so a imagem da API (Go)
+	$(COMPOSE) build api
+
+build-config-server: ## Constroi so a imagem do config-server (Java)
+	$(COMPOSE) build config-server
 
 up: ## Sobe tudo (constroi as imagens e cria os topicos no caminho)
 	$(COMPOSE) up -d --wait
@@ -43,11 +59,16 @@ up: ## Sobe tudo (constroi as imagens e cria os topicos no caminho)
 down: ## Derruba tudo, preservando os volumes
 	$(COMPOSE) down
 
-clean: ## Derruba tudo E apaga volumes e redes
+# tmp/ vai junto: e onde vive todo o descartavel do lado do host -- o state.dir das apps
+# Streams e a saida de build da API. Apagar so os volumes deixaria as apps subindo com um
+# checkpoint que aponta para offsets de um cluster que nao existe mais.
+clean: ## Derruba tudo E apaga volumes, redes e a tmp/ local
 	$(COMPOSE) down -v
+	rm -rf tmp/
 
-topics: ## (Re)cria os topicos -- idempotente
-	$(COMPOSE) up kafka-init-topics
+topics: ## (Re)cria os topicos -- idempotente; quem cria e o config-server, no boot
+	$(COMPOSE) restart config-server
+	@echo "  topicos reprovisionados; veja o log: docker compose logs config-server | grep -i topico"
 
 ps: ## Estado dos containers do lab
 	@$(COMPOSE) ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
@@ -69,8 +90,8 @@ JAVA_FLAGS ?= --enable-native-access=ALL-UNNAMED
 apps-build: ## Compila e empacota as apps Streams como jar executavel
 	$(MVN) -B -pl orders,antifraud -am package -DskipTests
 
-config: ## Mostra a configuracao que o config-server entrega: make config N=orders
-	@curl -s localhost:8888/$(or $(N),orders)/local | python3 -m json.tool
+config: ## Mostra a configuracao que o config-server entrega: make config APP=antifraud [PROFILE=prod]
+	@curl -s localhost:8888/lab/$(APP)$(if $(PROFILE),/$(PROFILE)) | python3 -m json.tool
 
 orders: ## Sobe o dominio orders contra o cluster A
 	$(MVN) -B -q -pl orders -am package -DskipTests

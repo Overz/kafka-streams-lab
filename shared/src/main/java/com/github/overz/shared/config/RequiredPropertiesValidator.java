@@ -7,7 +7,7 @@ import java.util.Optional;
 /**
  * Percorre a arvore de records procurando componente nulo. Tudo e obrigatorio por padrao;
  * o que pode faltar declara-se como Optional<T>, e o proprio tipo passa a documentar isso.
- *
+ * <p>
  * Existe para que uma chave esquecida no .yaml apareca como uma mensagem nomeando a chave,
  * no boot, e nao como NullPointerException no meio do pipeline horas depois.
  */
@@ -22,8 +22,8 @@ final class RequiredPropertiesValidator {
 
     if (!missing.isEmpty()) {
       throw new ConfigurationException(
-          "configuracao incompleta para a aplicacao '%s': %d chave(s) obrigatoria(s) ausente(s) -> %s"
-              .formatted(application, missing.size(), String.join(", ", missing)));
+        "configuracao incompleta para a aplicacao '%s': %d chave(s) obrigatoria(s) ausente(s) -> %s"
+          .formatted(application, missing.size(), String.join(", ", missing)));
     }
   }
 
@@ -41,7 +41,7 @@ final class RequiredPropertiesValidator {
         value = component.getAccessor().invoke(node);
       } catch (final ReflectiveOperationException e) {
         throw new ConfigurationException(
-            "nao foi possivel ler a propriedade '%s'".formatted(ConfigTree.toPropertyKey(childPath)), e);
+          "nao foi possivel ler a propriedade '%s'".formatted(ConfigTree.toPropertyKey(childPath)), e);
       }
 
       // Optional declara explicitamente que a ausencia e aceitavel; nao entra na conta.
